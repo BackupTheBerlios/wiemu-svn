@@ -24,6 +24,7 @@
 #include "../../include/device.hh"
 #include "regs.hh"
 #include "pins.hh"
+#include "timer.hh"
 #include <vector>
 
 #define MSK_ADC		0xfc00
@@ -221,6 +222,7 @@ class Avr: Mcu{
 private:
 	Regs regs;
 	Firmware fw;
+	Timer timer;
 	uint8_t *sram;
 	uint16_t *flash;
 	uint8_t *eeprom;
@@ -332,6 +334,7 @@ public:
 	void step(void);
 	void run(void);
 	unsigned int getCycles(void);
+	void dumpRegs(void);
 	void addDevice(Device *);
 };
 

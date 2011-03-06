@@ -33,6 +33,8 @@ Avr::Avr(){
 	initEEPROM(0x1000);			// 4 KB EEPROM
 	regs.setMem(this->sram);
 	regs.init();
+	timer.setMem(this->sram);
+	timer.setFlash(this->flash);
 	this->cycles = 0;
 	this->instructions = 0;
 	this->watchdog_timer = 0;
@@ -149,8 +151,8 @@ Avr::step(void){
 	}
 	opcode = this->flash[this->regs.pc];
 #ifdef DEBUG
-	std::cout << "PC=" << std::hex << std::setw(4) << this->regs.pc << ", opcode=" << std::setw(4) << (int)opcode << ", ";
-	std::cout << std::dec;
+	std::cout << "PC=" << std::hex << std::setw(4) << this->regs.pc*2 /*<< ", opcode=" << std::setw(4) << (int)opcode << ", "*/;
+	std::cout << std::dec << "\t";
 #endif
 	uint64_t cycles_prev = this->cycles;
 	readPins();
@@ -355,11 +357,13 @@ Avr::step(void){
 		_wdr();
 	else
 		illegal();
-	this->regs.dump();
+	//this->regs.dump();
 	writePins();
 	for(unsigned int i=0 ; i<this->devices.size() ; i++)
 		this->devices[i]->probe(cycles_prev);
 	instructions++;
+	if(this->regs.pc > 0x335)
+		this->stopped = true;
 }
 
 void
@@ -1266,6 +1270,9 @@ Avr::_out(){
 
 	// disassemble
 	std::cout << "out 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << ", " << this->regs.getName(Rr) << std::endl;
+	
+	if((unsigned int)(A-0x20) == TCCR0)
+		timer.setTCCR0();
 
 	this->regs.pc += 1;
 	this->cycles += 1;
@@ -2258,6 +2265,12 @@ Avr::_elpm(){
 
 	this->regs.pc += 1;
 	this->cycles += 3;
+}
+
+void
+Avr::dumpRegs()
+{
+	this->regs.dump();	
 }
 
 void
