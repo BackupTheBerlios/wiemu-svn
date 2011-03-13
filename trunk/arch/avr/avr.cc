@@ -358,12 +358,11 @@ Avr::step(void){
 	else
 		illegal();
 	//this->regs.dump();
+	timer.update(cycles_prev);
 	writePins();
 	for(unsigned int i=0 ; i<this->devices.size() ; i++)
 		this->devices[i]->probe(cycles_prev);
 	instructions++;
-	if(this->regs.pc > 0x335)
-		this->stopped = true;
 }
 
 void
@@ -1266,14 +1265,13 @@ void
 Avr::_out(){
 	uint8_t Rr = (opcode >> 4) & 0x1f;
 	uint8_t A = (((opcode >> 5) & 0x30) | (opcode & 0xf)) + 0x20;
+
 	this->sram[A] = this->regs.r[Rr];
+	timer.outp(A - 0x20, cycles);
 
 	// disassemble
 	std::cout << "out 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << ", " << this->regs.getName(Rr) << std::endl;
 	
-	if((unsigned int)(A-0x20) == TCCR0)
-		timer.setTCCR0();
-
 	this->regs.pc += 1;
 	this->cycles += 1;
 }
@@ -1282,11 +1280,13 @@ void
 Avr::_in(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
 	uint8_t A = (((opcode >> 5) & 0x30) | (opcode & 0xf)) + 0x20;
+	
+	timer.inp(A - 0x20);
 	this->regs.r[Rd] = this->sram[A];
 
 	// disassemble
 	std::cout << "in " << this->regs.getName(Rd) << ", 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << std::endl;
-
+	
 	this->regs.pc += 1;
 	this->cycles += 1;
 }

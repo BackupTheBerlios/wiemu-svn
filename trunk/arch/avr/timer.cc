@@ -20,7 +20,12 @@
 #include "timer.hh"
 #include <iostream>
 
-Timer::Timer(){}
+Timer::Timer(){
+	t0_run = false;
+	tcnt0 = 0;
+	t1_run = false;
+	tcnt1 = 0;
+}
 
 Timer::~Timer(){}
 
@@ -61,23 +66,127 @@ Timer::clearBit(uint8_t &byte, unsigned int bit){
 }
 
 void
-Timer::setTCCR0(){
+Timer::inp(uint8_t port){
+	if(port == TCNT0)
+		mem[TCNT0+0x20] = tcnt0;
+	else if(port == TCNT1L)
+		mem[TCNT1L+0x20] = (uint8_t)(tcnt1);
+	else if(port == TCNT1H)
+		mem[TCNT1H+0x20] = (uint8_t)(tcnt1 >> 8);
+}
+
+void
+Timer::outp(uint8_t port, uint64_t clk){
+	if(port == TCCR0)
+		setTCCR0(clk);
+	else if(port == TCCR1B)
+		setTCCR1B(clk);
+}
+
+void
+Timer::update(uint64_t clk){
+	updateTimer0(clk);
+	updateTimer1(clk);
+}
+
+void
+Timer::setTCCR0(uint64_t clk){
 	tccr0 = mem[TCCR0+0x20];
+	t0_clk_start = clk;
 	// clock select (CS)
 	std::cout << "TCCR0: " << (int)(tccr0) << std::endl;
 	uint8_t cs = tccr0 & 0x7;
 	switch(cs){
-			case T0_CS_NCLK:
-				break;
-			case T0_CS_PRE8:
-				break;
-			case T0_CS_PRE64:
-				break;
-			case T0_CS_PRE256:
-				break;
-			case T0_CS_PRE1024:
-				break;
-			default:
-				break;
+		case T0_CS_NCLK:
+			t0_cs = 0;
+			t0_run = false;
+			break;
+		case T0_CS_PRE1:
+			t0_cs = 1;
+			t0_run = true;
+			break;
+		case T0_CS_PRE8:
+			t0_cs = 8;
+			t0_run = true;
+			break;
+		case T0_CS_PRE32:
+			t0_cs = 32;
+			t0_run = true;
+			break;
+		case T0_CS_PRE64:
+			t0_cs = 64;
+			t0_run = true;
+			break;
+		case T0_CS_PRE128:
+			t0_cs = 128;
+			t0_run = true;
+			break;
+		case T0_CS_PRE256:
+			t0_cs = 256;
+			t0_run = true;
+			break;
+		case T0_CS_PRE1024:
+			t0_cs = 1024;
+			t0_run = true;
+			break;
+		default:
+			break;
 	}
+}
+
+void
+Timer::updateTimer0(uint64_t clk){
+	uint8_t tmp = tcnt0;
+	if(t0_run){
+		tcnt0 = (clk - t0_clk_start) / t0_cs;
+	}
+	if(tmp != tcnt0)
+		std::cout << "CLK=" << (int)(clk) << " TCNT0: " << (int)(tcnt0) << std::endl;
+}
+
+void
+Timer::setTCCR1B(uint64_t clk){
+	tccr1b = mem[TCCR1B+0x20];
+	t1_clk_start = clk;
+	// clock select (CS)
+	std::cout << "TCCR1B: " << (int)(tccr1b) << std::endl;
+	uint8_t cs = tccr1b & 0x7;
+	switch(cs){
+		case T1_CS_NCLK:
+			t1_cs = 0;
+			t1_run = false;
+			break;
+		case T1_CS_PRE1:
+			t1_cs = 1;
+			t1_run = true;
+			break;
+		case T1_CS_PRE8:
+			t1_cs = 8;
+			t1_run = true;
+			break;
+		case T1_CS_PRE64:
+			t1_cs = 64;
+			t1_run = true;
+			break;
+		case T1_CS_PRE256:
+			t1_cs = 256;
+			t1_run = true;
+			break;
+		case T1_CS_PRE1024:
+			t1_cs = 1024;
+			t1_run = true;
+			break;
+		default:
+			break;
+	}
+}
+
+void
+Timer::updateTimer1(uint64_t clk){
+	uint16_t tmp = tcnt1;
+	if(t1_run){
+		tcnt1 = (clk - t1_clk_start) / t1_cs;
+	}
+	if(tmp != tcnt1)
+		std::cout << "CLK=" << (int)(clk) << " TCNT1: " << (int)(tcnt1) << std::endl;
 }

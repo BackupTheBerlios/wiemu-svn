@@ -1,5 +1,5 @@
 /**
-    timer.cc
+    timer.hh
     Copyright (C) 2011  Mohamed Aslan <maslan@maslan.info>
 
     This program is free software: you can redistribute it and/or modify
@@ -59,13 +59,32 @@
 #define		CS00		0
 // Timer0 CS
 #define		T0_CS_NCLK		0			// No clock (stop)
-#define		T0_CS_EQU		1			// No prescaling
+#define		T0_CS_PRE1		1			// No prescaling
 #define		T0_CS_PRE8		2			// Prescaling with /8
-#define		T0_CS_PRE64		3			// Prescaling with /64
-#define		T0_CS_PRE256	4			// Prescaling with /256
-#define		T0_CS_PRE1024	5			// Prescaling with /1024
-#define		T0_CS_EXTFALL	6			// Unimplemented
-#define		T0_CS_EXTRISE	7			// Unimplemented
+#define		T0_CS_PRE32		3			// Prescaling with /32
+#define		T0_CS_PRE64		4			// Prescaling with /64
+#define		T0_CS_PRE128	5			// Prescaling with /128
+#define		T0_CS_PRE256	6			// Prescaling with /256
+#define		T0_CS_PRE1024	7			// Prescaling with /1024
+// Timer0 Counter Register
+#define		TCNT0		0x32
+
+/**
+ * Timer 1
+ **/
+// TCCR1: Control Registers
+#define		TCCR1B		0x2e
+// Timer1 CS
+#define		T1_CS_NCLK		0			// No clock (stop)
+#define		T1_CS_PRE1		1			// No prescaling
+#define		T1_CS_PRE8		2			// Prescaling with /8
+#define		T1_CS_PRE64		3			// Prescaling with /64
+#define		T1_CS_PRE256	4			// Prescaling with /256
+#define		T1_CS_PRE1024	5			// Prescaling with /1024
+// Timer0 Counter Register
+#define		TCNT1L		0x2c
+#define		TCNT1H		0x2d
+
 
 class Timer{
 public:
@@ -73,15 +92,32 @@ public:
 	~Timer();
 	void setMem(uint8_t *);
 	void setFlash(uint16_t *);
-	void setTCCR0();
+	void inp(uint8_t);
+	void outp(uint8_t, uint64_t);
+	void update(uint64_t);
 private:
 	uint8_t *mem;
 	uint16_t *flash;
+	// Timer0
 	uint8_t tccr0;
-	
+	uint8_t tcnt0;
+	unsigned int t0_cs;
+	bool t0_run;
+	uint64_t t0_clk_start;
+	// Timer1
+	uint8_t tccr1a, tccr1b, tccr1c;
+	uint16_t tcnt1;
+	unsigned int t1_cs;
+	bool t1_run;
+	uint64_t t1_clk_start;
+
 	bool getBit(uint8_t byte, unsigned int bit);
 	bool getBit(uint16_t byte, unsigned int bit);
 	void setBit(uint8_t &byte, unsigned int bit);
 	void clearBit(uint8_t &byte, unsigned int bit);
+	void setTCCR0(uint64_t);
+	void updateTimer0(uint64_t);
+	void setTCCR1B(uint64_t);
+	void updateTimer1(uint64_t);
 };
 
