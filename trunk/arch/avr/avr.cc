@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include "avr.hh"
+#include <fstream>		// To be removed
 
 Avr::Avr(){
 #ifdef DEBUG
@@ -155,6 +156,7 @@ Avr::step(void){
 	std::cout << std::dec << "\t";
 #endif
 	uint64_t cycles_prev = this->cycles;
+	//timer.update(this->cycles);
 	readPins();
 
 	if((opcode & MSK_ADC) == OP_ADC)
@@ -358,7 +360,7 @@ Avr::step(void){
 	else
 		illegal();
 	//this->regs.dump();
-	timer.update(cycles_prev);
+	timer.update(cycles - cycles_prev);
 	writePins();
 	for(unsigned int i=0 ; i<this->devices.size() ; i++)
 		this->devices[i]->probe(cycles_prev);
@@ -367,6 +369,7 @@ Avr::step(void){
 
 void
 Avr::run(){
+		//std::ofstream logf("/media/MULTIMEDIA/wiemu.log");
 		while(true){
 			if(this->stopped)
 				break;
@@ -375,8 +378,23 @@ Avr::run(){
 				break;
 				//continue;
 			}
+			uint16_t pc = this->regs.pc;
 			step();
+			//if(this->regs.pc*2 == 0x65c + 2)
+				//break;
+			//std::string log = this->regs.dump3(pc, this->cycles);
+			//logf << log << std::endl;
+			/*
+			if(this->regs.pc*2 == 0x674){
+				std::string log = this->regs.dump2();
+				std::ofstream logf("reg.log");
+				logf << log << std::endl;
+				logf.close();
+				break;
+			}*/
 		}
+		regs.dump();
+		//logf.close();
 }
 
 void
@@ -1130,7 +1148,7 @@ Avr::_cpc(){
 	if(n^v) this->regs.setS();
 	else this->regs.clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
+	if((!R)&(this->regs.isZ())) this->regs.setZ();
 	else this->regs.clearZ();
 	// check for the C flag
 	if(((!Rd7)&Rr7) | (Rr7&R7) | (R7&(!Rd7))) this->regs.setC();
@@ -1138,7 +1156,7 @@ Avr::_cpc(){
 	
 	// disassemble
 	std::cout << "cpc " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
-	
+		
 	this->regs.pc += 1;
 	this->cycles += 1;
 }

@@ -91,6 +91,8 @@ public:
 	void setMem(uint8_t *);
 	void init();
 	void dump(void);
+	std::string dump2(void);
+	std::string dump3(uint16_t, uint64_t);
 	void setI();
 	void clearI();
 	bool isI();

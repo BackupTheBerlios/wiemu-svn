@@ -21,10 +21,17 @@
 #include <iostream>
 
 Timer::Timer(){
+	// Timer0
+	ticks0 = 0;
 	t0_run = false;
 	tcnt0 = 0;
+	assr = 0;
+	async0 = false;
+	// Timer1
+	ticks1 = 0;
 	t1_run = false;
 	tcnt1 = 0;
+	temp1 = 0;
 }
 
 Timer::~Timer(){}
@@ -67,34 +74,64 @@ Timer::clearBit(uint8_t &byte, unsigned int bit){
 
 void
 Timer::inp(uint8_t port){
-	if(port == TCNT0)
-		mem[TCNT0+0x20] = tcnt0;
-	else if(port == TCNT1L)
-		mem[TCNT1L+0x20] = (uint8_t)(tcnt1);
-	else if(port == TCNT1H)
-		mem[TCNT1H+0x20] = (uint8_t)(tcnt1 >> 8);
+	if(port == TCNT0){
+		mem[TCNT0 + AVR_IO_BASE] = tcnt0;
+	}
+	else if(port == TCCR0){
+		mem[TCCR0 + AVR_IO_BASE] = tccr0;
+	}
+	else if(port == TCNT1L){
+		mem[TCNT1L + AVR_IO_BASE] = (uint8_t)(tcnt1);
+		temp1 = (uint8_t)(tcnt1 >> 8);			// Copy TCNTL1H to TEMP Reg
+	}
+	else if(port == TCNT1H){
+		mem[TCNT1H + AVR_IO_BASE] = temp1;
+	}
+	else if(port == TCCR1B){
+		mem[TCCR1B + AVR_IO_BASE] = tccr1b;
+	}
+	else if(port == ASSR){
+		mem[ASSR + AVR_IO_BASE] = assr;
+	}
+	else{
+		std::cerr << "INP ELSE: " << (int)port << std::endl;
+	}
 }
 
 void
 Timer::outp(uint8_t port, uint64_t clk){
 	if(port == TCCR0)
-		setTCCR0(clk);
+		setTCCR0();
 	else if(port == TCCR1B)
-		setTCCR1B(clk);
+		setTCCR1B();
+	else if(port == TCNT1L)
+		setTCNT1L();
+	else if(port == TCNT1H)
+		setTCNT1H();
+	else if(port == ASSR)
+		setASSR();
+	else
+		std::cerr << clk << ": OUTP ELSE: " << (int)port << "<=" << (int)mem[port+0x20] << std::endl;
 }
 
 void
-Timer::update(uint64_t clk){
-	updateTimer0(clk);
-	updateTimer1(clk);
+Timer::update(uint64_t c){
+	// Increment the overall ticks by the elapsed
+	// clock cycles in the last instruction
+	if(t0_run){
+		ticks0 += c;
+		updateTimer0();
+	}
+	if(t1_run){
+		ticks1 += c;
+		updateTimer1();
+	}
 }
 
 void
-Timer::setTCCR0(uint64_t clk){
-	tccr0 = mem[TCCR0+0x20];
-	t0_clk_start = clk;
+Timer::setTCCR0(){
+	tccr0 = mem[TCCR0 + AVR_IO_BASE];
 	// clock select (CS)
-	std::cout << "TCCR0: " << (int)(tccr0) << std::endl;
 	uint8_t cs = tccr0 & 0x7;
 	switch(cs){
 		case T0_CS_NCLK:
@@ -135,21 +172,28 @@ Timer::setTCCR0(uint64_t clk){
 }
 
 void
-Timer::updateTimer0(uint64_t clk){
-	uint8_t tmp = tcnt0;
-	if(t0_run){
-		tcnt0 = (clk - t0_clk_start) / t0_cs;
+Timer::setASSR(){
+	assr = mem[ASSR + AVR_IO_BASE];
+	if(assr & (1 << AS0)){
+		async0 = true;
+	}else{
+		async0 = false;
 	}
-	if(tmp != tcnt0)
-		std::cout << "CLK=" << (int)(clk) << " TCNT0: " << (int)(tcnt0) << std::endl;
 }
 
 void
-Timer::setTCCR1B(uint64_t clk){
-	tccr1b = mem[TCCR1B+0x20];
-	t1_clk_start = clk;
+Timer::updateTimer0(){
+	if(!async0){
+		tcnt0 = ticks0 / t0_cs;
+	}else{
+		tcnt0 = (ticks0 / ASYNC_DIV) / t0_cs;
+	}
+}
+
+void
+Timer::setTCCR1B(){
+	tccr1b = mem[TCCR1B + AVR_IO_BASE];
 	// clock select (CS)
-	std::cout << "TCCR1B: " << (int)(tccr1b) << std::endl;
 	uint8_t cs = tccr1b & 0x7;
 	switch(cs){
 		case T1_CS_NCLK:
@@ -182,11 +226,17 @@ Timer::setTCCR1B(uint64_t clk){
 }
 
 void
-Timer::updateTimer1(uint64_t clk){
-	uint16_t tmp = tcnt1;
-	if(t1_run){
-		tcnt1 = (clk - t1_clk_start) / t1_cs;
-	}
-	if(tmp != tcnt1)
-		std::cout << "CLK=" << (int)(clk) << " TCNT1: " << (int)(tcnt1) << std::endl;
+Timer::setTCNT1L(){
+	tcnt1 = (tcnt1 & 0xff00) | temp1;
+}
+
+void
+Timer::setTCNT1H(){
+	tcnt1 = (tcnt1 & 0x00ff) | (mem[TCNT1H + AVR_IO_BASE] << 8);
+	temp1 = mem[TCNT1L + AVR_IO_BASE];
+}
+
+void
+Timer::updateTimer1(){
+	tcnt1 = ticks1 / t1_cs;
 }

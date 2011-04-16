@@ -16,6 +16,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
+
+#define		AVR_IO_BASE	0x20
+
 /**
  * Common for all timers
  **/
@@ -68,6 +71,10 @@
 #define		T0_CS_PRE1024	7			// Prescaling with /1024
 // Timer0 Counter Register
 #define		TCNT0		0x32
+// Timer0 Asynchronous Control & Status Register
+#define		ASSR		0x30
+#define		AS0			3
+#define		ASYNC_DIV	225				// Ext.CLK = 32.768kHz for SYSCLK = 8MHz
 
 /**
  * Timer 1
@@ -99,25 +106,32 @@ private:
 	uint8_t *mem;
 	uint16_t *flash;
 	// Timer0
+	uint64_t ticks0;					// Overall system clock cycles elapsed by timer0
 	uint8_t tccr0;
 	uint8_t tcnt0;
+	uint8_t assr;
 	unsigned int t0_cs;
 	bool t0_run;
-	uint64_t t0_clk_start;
+	bool async0;
 	// Timer1
+	uint64_t ticks1;					// Overall system clock cycles elapsed by timer1
 	uint8_t tccr1a, tccr1b, tccr1c;
 	uint16_t tcnt1;
 	unsigned int t1_cs;
 	bool t1_run;
 	uint64_t t1_clk_start;
+	uint8_t temp1;
 
 	bool getBit(uint8_t byte, unsigned int bit);
 	bool getBit(uint16_t byte, unsigned int bit);
 	void setBit(uint8_t &byte, unsigned int bit);
 	void clearBit(uint8_t &byte, unsigned int bit);
-	void setTCCR0(uint64_t);
-	void updateTimer0(uint64_t);
-	void setTCCR1B(uint64_t);
-	void updateTimer1(uint64_t);
+	void setTCCR0();
+	void setASSR();
+	void updateTimer0();
+	void setTCCR1B();
+	void setTCNT1L();
+	void setTCNT1H();
+	void updateTimer1();
 };
 

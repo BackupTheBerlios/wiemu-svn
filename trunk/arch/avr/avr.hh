@@ -217,7 +217,6 @@
 #define OP_SWAP		0x9402
 #define OP_WDR		0x95a8
 
-
 class Avr: Mcu{
 private:
 	Regs regs;

@@ -19,6 +19,7 @@
 #include "regs.hh"
 #include <iostream>
 #include <iomanip>
+#include <sstream>			// To be removed
 
 const std::string
 Regs::reg_names[] = {
@@ -50,8 +51,7 @@ Regs::init(){
 void
 Regs::dump(){
 	for(int i=0 ; i<32 ; i++){
-		std::cout << "R" << std::setfill('0') << std::setw(2) << std::dec << i;
-		std::cout << std::hex;
+		std::cout << "R" << std::setfill('0') << std::setw(2) << std::dec << i << std::hex;
 		std::cout << "=" << std::setfill('0') << std::setw(2) << (int)this->r[i] << "   ";
 		if(!((i+1)%8))
 			std::cout << std::endl;
@@ -88,6 +88,79 @@ Regs::dump(){
 	std::cout << "PC=";
 	std::cout << std::setw(4) << this->pc;
 	std::cout << std::dec << std::endl;
+}
+
+std::string
+Regs::dump2(){
+	std::stringstream ss;
+	for(int i=0 ; i<32 ; i++){
+		ss << "R" << std::setfill('0') << std::setw(2) << std::dec << i << std::hex;
+		ss << "=" << std::setfill('0') << std::setw(2) << (int)this->r[i] << "   ";
+		if(!((i+1)%8))
+			ss << std::endl;
+	}
+	ss << "X=";
+	ss << std::setw(2);
+	ss << (int)this->r[REG_R27];
+	ss << std::setw(2);
+	ss << (int)this->r[REG_R26];
+	ss << "   ";
+	ss << "Y=";
+	ss << std::setw(2);
+	ss << (int)this->r[REG_R29];
+	ss << std::setw(2);
+	ss << (int)this->r[REG_R28];
+	ss << "   ";
+	ss << "Z=";
+	ss << std::setw(2);
+	ss << (int)this->r[REG_R31];
+	ss << std::setw(2);
+	ss << (int)this->r[REG_R30];
+	ss << "   ";
+	// Mapped in the I/O
+	ss << "SP=";
+	ss << std::setw(2);
+	ss << (int)this->r[REG_SPH];		// SPH
+	ss << std::setw(2);
+	ss << (int)this->r[REG_SPL];		// SPL
+	ss << "   ";
+	// Mapped in the I/O
+	ss << "SREG=";
+	ss << std::setw(2) << (int)this->r[REG_SREG];
+	ss << "   ";
+	ss << "PC=";
+	ss << std::setw(4) << this->pc;
+	ss << std::dec << std::endl;
+	return ss.str();
+}
+
+std::string
+Regs::dump3(uint16_t pc, uint64_t clk){
+	std::stringstream ss;
+	for(int i=0 ; i<32 ; i++){
+		if(!((i+1)%8)){
+			ss << "R" << i;
+			ss << "=" << (int)this->r[i];
+			ss << std::endl;
+		}else{
+			ss << "R" << i;
+			ss << "=" << (int)this->r[i] << " ";
+		}
+	}
+	uint16_t sp = (this->r[REG_SPH] << 8) | this->r[REG_SPL];
+	ss << "SP=";
+	ss << (int)sp;
+	ss << " ";
+	ss << "SREG=";
+	ss << (int)this->r[REG_SREG];
+	ss << " ";
+	ss << "PC=";
+	ss << (int)(pc*2);
+	ss << " ";
+	ss << "SCLK=";
+	ss << clk;
+	ss << std::endl;
+	return ss.str();
 }
 
 void

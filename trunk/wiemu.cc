@@ -56,7 +56,7 @@ main(int argc, char **argv)
 	mica2.load(flash);
 	if(steps != -1){
 		for(int i=1 ; i<=steps ; i++)
-		mica2.step();
+			mica2.step();
 	}else{
 		mica2.run();
 	}
