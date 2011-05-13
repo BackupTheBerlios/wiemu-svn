@@ -144,6 +144,11 @@ Avr::reverseEndian(uint16_t &word){
 
 void
 Avr::step(void){
+	regs.oldpc = regs.pc;
+	if(timer.overflow){
+		interrupt(16);
+	}
+
 	if(this->regs.pc*2 >= fw.getSize()){
 		std::cout << "FLASH: ILLEGAL ADDRESS: ";
 		std::cout << std::hex << this->regs.pc*2 << std::dec << std::endl;
@@ -155,8 +160,8 @@ Avr::step(void){
 	std::cout << "PC=" << std::hex << std::setw(4) << this->regs.pc*2 /*<< ", opcode=" << std::setw(4) << (int)opcode << ", "*/;
 	std::cout << std::dec << "\t";
 #endif
+
 	uint64_t cycles_prev = this->cycles;
-	//timer.update(this->cycles);
 	readPins();
 
 	if((opcode & MSK_ADC) == OP_ADC)
@@ -359,8 +364,10 @@ Avr::step(void){
 		_wdr();
 	else
 		illegal();
-	//this->regs.dump();
+
 	timer.update(cycles - cycles_prev);
+
+
 	writePins();
 	for(unsigned int i=0 ; i<this->devices.size() ; i++)
 		this->devices[i]->probe(cycles_prev);
@@ -369,7 +376,7 @@ Avr::step(void){
 
 void
 Avr::run(){
-		//std::ofstream logf("/media/MULTIMEDIA/wiemu.log");
+		std::ofstream logf("wiemu.log");
 		while(true){
 			if(this->stopped)
 				break;
@@ -378,12 +385,9 @@ Avr::run(){
 				break;
 				//continue;
 			}
-			uint16_t pc = this->regs.pc;
+			//uint16_t pc = this->regs.pc;
 			step();
-			//if(this->regs.pc*2 == 0x65c + 2)
-				//break;
-			//std::string log = this->regs.dump3(pc, this->cycles);
-			//logf << log << std::endl;
+			logf << this->regs.dump3(regs.oldpc, this->cycles) << std::endl;
 			/*
 			if(this->regs.pc*2 == 0x674){
 				std::string log = this->regs.dump2();
@@ -394,7 +398,7 @@ Avr::run(){
 			}*/
 		}
 		regs.dump();
-		//logf.close();
+		logf.close();
 }
 
 void
@@ -1285,7 +1289,7 @@ Avr::_out(){
 	uint8_t A = (((opcode >> 5) & 0x30) | (opcode & 0xf)) + 0x20;
 
 	this->sram[A] = this->regs.r[Rr];
-	timer.outp(A - 0x20, cycles);
+	timer.outp(A - 0x20);
 
 	// disassemble
 	std::cout << "out 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << ", " << this->regs.getName(Rr) << std::endl;
@@ -1332,7 +1336,6 @@ Avr::_rcall(){
 
 void
 Avr::_ret(){
-	this->regs.dump();
 	this->regs.setSP(this->regs.getSP()+2);
 
 	// disassemble
@@ -1837,7 +1840,7 @@ Avr::_reti(){
 	this->regs.setI();
 
 	// disassemble
-	std::cout << "reti\t\t" << "; 0x" << ((int)((this->sram[this->regs.getSP()-1] << 8) | (this->sram[this->regs.getSP()])*2)) << std::endl;
+	std::cout << "reti\t\t" << "; 0x" << ((unsigned int)((this->sram[this->regs.getSP()-1] << 8) | (this->sram[this->regs.getSP()])*2)) << std::endl;
 
 	this->regs.pc = (this->sram[this->regs.getSP()-1] << 8) | (this->sram[this->regs.getSP()]);	
 	this->cycles += 4;
@@ -2295,4 +2298,20 @@ void
 Avr::addDevice(Device *d)
 {
 	this->devices.push_back(d);
+}
+
+void
+Avr::interrupt(uint8_t intr)
+{
+	uint64_t cycles_prev = this->cycles;
+	this->sram[this->regs.getSP()] = (uint8_t)(this->regs.pc);
+	this->sram[this->regs.getSP()-1] = (uint8_t)((this->regs.pc) >> 8);
+	
+	this->regs.setSP(this->regs.getSP()-2);
+	this->regs.clearI();
+
+	this->regs.pc = intr * 2;
+	this->regs.oldpc = this->regs.pc;
+	this->cycles += 4;
+	timer.update(cycles - cycles_prev);
 }

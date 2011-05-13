@@ -235,6 +235,7 @@ private:
 	bool stopped;					// Used by BREAK
 	bool sleeping;
 	unsigned int instructions;		// Number of instructions executed
+	std::vector<Device *> devices;			// List of attached devices
 	void initSRAM(unsigned int);	// Data Memory
 	void initFLASH(unsigned int);	// Program Memory
 	void initEEPROM(unsigned int);	// EEPROM Memory
@@ -324,7 +325,7 @@ private:
 	void _lpm();
 	void _elpm();
 	void illegal();
-	std::vector<Device *> devices;			// List of attached devices
+	void interrupt(uint8_t);
 public:
 	Avr();
 	~Avr();

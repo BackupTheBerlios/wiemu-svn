@@ -43,6 +43,7 @@ Regs::init(){
 	for(int i=0 ; i<32; i++)
 		this->r[i] = 0;
 	this->pc = 0;
+	this->oldpc = 0;
 	this->r[REG_SREG] = 0;
 	this->r[REG_SPL] = 0;
 	this->r[REG_SPH] = 0;

@@ -86,6 +86,7 @@ class Regs{
 public:
 	uint8_t *r;
 	uint16_t pc;
+	uint16_t oldpc;
 	Regs();
 	~Regs();
 	void setMem(uint8_t *);

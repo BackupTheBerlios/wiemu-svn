@@ -100,19 +100,24 @@ public:
 	void setMem(uint8_t *);
 	void setFlash(uint16_t *);
 	void inp(uint8_t);
-	void outp(uint8_t, uint64_t);
+	void outp(uint8_t);
 	void update(uint64_t);
+	bool overflow;
 private:
 	uint8_t *mem;
 	uint16_t *flash;
+	uint8_t assr;
+	uint8_t timsk;
+	
+	bool async0;
+	bool toie0;
+	
 	// Timer0
 	uint64_t ticks0;					// Overall system clock cycles elapsed by timer0
 	uint8_t tccr0;
 	uint8_t tcnt0;
-	uint8_t assr;
 	unsigned int t0_cs;
 	bool t0_run;
-	bool async0;
 	// Timer1
 	uint64_t ticks1;					// Overall system clock cycles elapsed by timer1
 	uint8_t tccr1a, tccr1b, tccr1c;
@@ -126,8 +131,10 @@ private:
 	bool getBit(uint16_t byte, unsigned int bit);
 	void setBit(uint8_t &byte, unsigned int bit);
 	void clearBit(uint8_t &byte, unsigned int bit);
-	void setTCCR0();
 	void setASSR();
+	void setTIMSK();
+	void setTCCR0();
+	void setTCNT0();
 	void updateTimer0();
 	void setTCCR1B();
 	void setTCNT1L();
