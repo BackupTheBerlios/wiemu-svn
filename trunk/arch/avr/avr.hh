@@ -218,27 +218,29 @@
 #define OP_WDR		0x95a8
 
 class Avr: Mcu{
+friend class Timer;
 private:
 	Regs regs;
 	Firmware fw;
-	Timer timer;
+	Timer *timer;
 	uint8_t *sram;
 	uint16_t *flash;
 	uint8_t *eeprom;
-	Pin pins[AVR_NUM_PINS];			// MCU Pins
-	int msize;						// Memory size
-	int fsize;						// Flash size
-	int esize;						// EEPROM size
+	Pin pins[AVR_NUM_PINS];				// MCU Pins
+	int msize;					// Memory size
+	int fsize;					// Flash size
+	int esize;					// EEPROM size
 	uint16_t opcode;				// Current opcode
 	uint64_t cycles;				// Clock cycles elapsed
-	unsigned int watchdog_timer;	// Watchdog timer
+	unsigned int watchdog_timer;			// Watchdog timer
 	bool stopped;					// Used by BREAK
 	bool sleeping;
-	unsigned int instructions;		// Number of instructions executed
+	unsigned int instructions;			// Number of instructions executed
 	std::vector<Device *> devices;			// List of attached devices
-	void initSRAM(unsigned int);	// Data Memory
-	void initFLASH(unsigned int);	// Program Memory
-	void initEEPROM(unsigned int);	// EEPROM Memory
+	uint8_t nextInterrupt;
+	void initSRAM(unsigned int);			// Data Memory
+	void initFLASH(unsigned int);			// Program Memory
+	void initEEPROM(unsigned int);			// EEPROM Memory
 	void initPins();				// Initialize MCU Pins
 	void readPins();				// Read from MCU Pins to IO Regs
 	void writePins();				// Write from IO Regs to MCU Pins
@@ -326,6 +328,7 @@ private:
 	void _elpm();
 	void illegal();
 	void interrupt(uint8_t);
+	void fireInterrupt(uint8_t);
 public:
 	Avr();
 	~Avr();

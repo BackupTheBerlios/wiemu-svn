@@ -24,7 +24,10 @@
 #include "avr.hh"
 #include <fstream>		// To be removed
 
+std::ofstream f;
+
 Avr::Avr(){
+	f.open("t0.txt");
 #ifdef DEBUG
 	std::cout << "Avr()" << std::endl;
 #endif
@@ -34,9 +37,11 @@ Avr::Avr(){
 	initEEPROM(0x1000);			// 4 KB EEPROM
 	regs.setMem(this->sram);
 	regs.init();
-	timer.setMem(this->sram);
-	timer.setFlash(this->flash);
-	this->cycles = 0;
+	timer = new Timer(this);
+	timer->setMem(this->sram);
+	timer->setFlash(this->flash);
+	this->nextInterrupt = 0;
+	this->cycles = -1;
 	this->instructions = 0;
 	this->watchdog_timer = 0;
 	this->stopped = false;
@@ -92,7 +97,7 @@ Avr::loadImage(std::string image){
 
 unsigned int
 Avr::getCycles(void){
-		return this->cycles;
+		return this->cycles + 1;
 }
 
 Pin*
@@ -145,8 +150,17 @@ Avr::reverseEndian(uint16_t &word){
 void
 Avr::step(void){
 	regs.oldpc = regs.pc;
-	if(timer.overflow){
-		interrupt(16);
+
+	if(nextInterrupt){
+		uint64_t cycles_prev = this->cycles;
+		interrupt(nextInterrupt);
+		nextInterrupt = 0;
+		//std::cout << "(int)TCNT0 = 0x" << std::hex << timer->getTCNT0() << std::dec;
+		//std::cout << " CLK = " << cycles - cycles_prev;
+
+		timer->update(cycles - cycles_prev);
+
+		//std::cout << " (A)TCNT0 = 0x" << std::hex << timer->getTCNT0() << std::dec << std::endl;
 	}
 
 	if(this->regs.pc*2 >= fw.getSize()){
@@ -365,13 +379,20 @@ Avr::step(void){
 	else
 		illegal();
 
-	timer.update(cycles - cycles_prev);
+	//std::cout << "TCNT0 = 0x" << std::hex << timer->getTCNT0() << std::dec;
+	//std::cout << " CLK = " << cycles - cycles_prev;
 
+	timer->update(cycles - cycles_prev);
+
+	//std::cout << " (A)TCNT0 = 0x" << std::hex << timer->getTCNT0() << std::dec << std::endl;
 
 	writePins();
 	for(unsigned int i=0 ; i<this->devices.size() ; i++)
 		this->devices[i]->probe(cycles_prev);
 	instructions++;
+
+	f << "TCNT0 = 0x" << std::hex << timer->getTCNT0() << std::dec << std::endl;
+	f.flush();
 }
 
 void
@@ -387,7 +408,7 @@ Avr::run(){
 			}
 			//uint16_t pc = this->regs.pc;
 			step();
-			logf << this->regs.dump3(regs.oldpc, this->cycles) << std::endl;
+			//logf << this->regs.dump3(regs.oldpc, this->cycles) << std::endl;
 			/*
 			if(this->regs.pc*2 == 0x674){
 				std::string log = this->regs.dump2();
@@ -1289,7 +1310,7 @@ Avr::_out(){
 	uint8_t A = (((opcode >> 5) & 0x30) | (opcode & 0xf)) + 0x20;
 
 	this->sram[A] = this->regs.r[Rr];
-	timer.outp(A - 0x20);
+	timer->outp(A - 0x20);
 
 	// disassemble
 	std::cout << "out 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << ", " << this->regs.getName(Rr) << std::endl;
@@ -1302,8 +1323,8 @@ void
 Avr::_in(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
 	uint8_t A = (((opcode >> 5) & 0x30) | (opcode & 0xf)) + 0x20;
-	
-	timer.inp(A - 0x20);
+
+	timer->inp(A - 0x20);
 	this->regs.r[Rd] = this->sram[A];
 
 	// disassemble
@@ -2301,9 +2322,18 @@ Avr::addDevice(Device *d)
 }
 
 void
+Avr::fireInterrupt(uint8_t intr)
+{
+	if(this->regs.isI()){
+		std::cout << std::endl;
+		step();
+		nextInterrupt = intr;
+	}
+}
+
+void
 Avr::interrupt(uint8_t intr)
 {
-	uint64_t cycles_prev = this->cycles;
 	this->sram[this->regs.getSP()] = (uint8_t)(this->regs.pc);
 	this->sram[this->regs.getSP()-1] = (uint8_t)((this->regs.pc) >> 8);
 	
@@ -2312,6 +2342,6 @@ Avr::interrupt(uint8_t intr)
 
 	this->regs.pc = intr * 2;
 	this->regs.oldpc = this->regs.pc;
-	this->cycles += 4;
-	timer.update(cycles - cycles_prev);
+	this->cycles += 3;		/* for compatibility with AVR Studio */
 }
+

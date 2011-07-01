@@ -16,6 +16,8 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
+#ifndef TIMER_HH
+#define TIMER_HH
 
 #define		AVR_IO_BASE	0x20
 
@@ -31,7 +33,7 @@
 #define		OCF1A		4
 #define		OCF1B		3
 #define		TOV1		2
-#define		OCF0		1
+#define		OCF0		1				// Timer0 Output Compare Flag
 #define		TOV0		0				// Timer0 Overflow Flag
 
 // TIMSK:	Interrupt Mask Register
@@ -73,8 +75,10 @@
 #define		TCNT0		0x32
 // Timer0 Asynchronous Control & Status Register
 #define		ASSR		0x30
-#define		AS0			3
+#define		AS0		3
 #define		ASYNC_DIV	225				// Ext.CLK = 32.768kHz for SYSCLK = 8MHz
+// Timer0 Output Compare Register
+#define		OCR0		0x31
 
 /**
  * Timer 1
@@ -93,9 +97,12 @@
 #define		TCNT1H		0x2d
 
 
+class Avr;
+
 class Timer{
 public:
 	Timer();
+	Timer(Avr *);
 	~Timer();
 	void setMem(uint8_t *);
 	void setFlash(uint16_t *);
@@ -103,29 +110,39 @@ public:
 	void outp(uint8_t);
 	void update(uint64_t);
 	bool overflow;
+	int getTCNT0();
 private:
+	Avr *avr;
+
 	uint8_t *mem;
 	uint16_t *flash;
-	uint8_t assr;
-	uint8_t timsk;
-	
-	bool async0;
-	bool toie0;
+
+	uint8_t timsk;						// Timer Interrupt Mask
+	uint8_t tifr;						// Timer Interrupt Flags
 	
 	// Timer0
 	uint64_t ticks0;					// Overall system clock cycles elapsed by timer0
-	uint8_t tccr0;
-	uint8_t tcnt0;
-	unsigned int t0_cs;
-	bool t0_run;
+	uint8_t tccr0;						// Timer0 Control Register
+	uint8_t tcnt0;						// Timer0 Counter Register
+	uint8_t ocr0;						// Timer0 Output Compare Register
+	uint8_t assr;						// Asynchronous
+	unsigned int t0_cs;					// Timer0 CLK Select
+	bool t0_run;						// is Timer0 running?
+	bool t0_initialized;					// is TCCR0 initialized?
+	bool async0;						// is Asynchronous mode enabled?
+	bool toie0;						// is Timer0 interrupt on Overflow enabled?
+
 	// Timer1
 	uint64_t ticks1;					// Overall system clock cycles elapsed by timer1
 	uint8_t tccr1a, tccr1b, tccr1c;
 	uint16_t tcnt1;
+	uint16_t ocr1a, ocr1b;
 	unsigned int t1_cs;
 	bool t1_run;
+	bool t1_initialized;
 	uint64_t t1_clk_start;
 	uint8_t temp1;
+	bool async1;						// is Asynchronous mode enabled?
 
 	bool getBit(uint8_t byte, unsigned int bit);
 	bool getBit(uint16_t byte, unsigned int bit);
@@ -133,12 +150,16 @@ private:
 	void clearBit(uint8_t &byte, unsigned int bit);
 	void setASSR();
 	void setTIMSK();
+	void setTIFR();
 	void setTCCR0();
 	void setTCNT0();
+	void setOCR0();
 	void updateTimer0();
 	void setTCCR1B();
 	void setTCNT1L();
 	void setTCNT1H();
 	void updateTimer1();
 };
+
+#endif
 
