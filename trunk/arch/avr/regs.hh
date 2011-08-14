@@ -82,6 +82,8 @@
 #define	AVR_IOREG_PORTG	0x65
 #define	AVR_IOREG_PING	0x63
 
+#define	REG_MCUCR	0x35
+
 class Regs{
 public:
 	uint8_t *r;

@@ -95,7 +95,10 @@
 // Timer0 Counter Register
 #define		TCNT1L		0x2c
 #define		TCNT1H		0x2d
-
+// Timer1 Output Compare Registers
+#define		OCR1A		0x2a
+#define		OCR1AL		0x2a
+#define		OCR1AH		0x2b
 
 class Avr;
 
@@ -119,6 +122,9 @@ private:
 
 	uint8_t timsk;						// Timer Interrupt Mask
 	uint8_t tifr;						// Timer Interrupt Flags
+
+	bool sleep;						// Are we asleep
+	unsigned int sleeping_mode;
 	
 	// Timer0
 	uint64_t ticks0;					// Overall system clock cycles elapsed by timer0

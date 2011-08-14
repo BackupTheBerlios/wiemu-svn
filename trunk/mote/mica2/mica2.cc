@@ -24,6 +24,13 @@ Mica2::Mica2()
 	Pin::bind(leds.getPins()[MICA2_LED_GREEN], mcu.getPins()[AVR_PIN_PA1]);
 	Pin::bind(leds.getPins()[MICA2_LED_RED], mcu.getPins()[AVR_PIN_PA2]);
 	mcu.addDevice(&leds);
+	Pin::bind(cc1000.getPins()[CC1000_PIN_PALE], mcu.getPins()[AVR_PIN_PD4]);
+	Pin::bind(cc1000.getPins()[CC1000_PIN_PCLK], mcu.getPins()[AVR_PIN_PD6]);
+	Pin::bind(cc1000.getPins()[CC1000_PIN_PDATA], mcu.getPins()[AVR_PIN_PD7]);
+	Pin::bind(cc1000.getPins()[CC1000_PIN_DIO], mcu.getPins()[AVR_PIN_PB3]);	// <--
+	Pin::bind(cc1000.getPins()[CC1000_PIN_DCLK], mcu.getPins()[AVR_PIN_PB1]);
+	Pin::bind(cc1000.getPins()[CC1000_PIN_RSSI], mcu.getPins()[AVR_PIN_PF0]);
+	mcu.addDevice(&cc1000);
 }
 
 Mica2::~Mica2()

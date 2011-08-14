@@ -21,7 +21,7 @@
 
 #include "../../include/pin.hh"
 
-#define AVR_NUM_PINS	64
+#define AVR_NUM_PINS		64
 
 #define	AVR_PIN_PEN		0
 #define AVR_PIN_PE0		1
@@ -42,11 +42,11 @@
 #define	AVR_PIN_PB7		16
 #define AVR_PIN_PG3		17
 #define AVR_PIN_PG4		18
-#define AVR_PIN_RESET	19
-#define AVR_PIN_VCC1	20
-#define AVR_PIN_GND1	21
-#define	AVR_PIN_XTAL2	22
-#define	AVR_PIN_XTAL1	23
+#define AVR_PIN_RESET		19
+#define AVR_PIN_VCC1		20
+#define AVR_PIN_GND1		21
+#define	AVR_PIN_XTAL2		22
+#define	AVR_PIN_XTAL1		23
 #define	AVR_PIN_PD0		24
 #define	AVR_PIN_PD1		25
 #define	AVR_PIN_PD2		26
@@ -74,8 +74,8 @@
 #define	AVR_PIN_PA2		48
 #define	AVR_PIN_PA1		49
 #define	AVR_PIN_PA0		50
-#define AVR_PIN_VCC2	51
-#define	AVR_PIN_GND2	52
+#define AVR_PIN_VCC2		51
+#define	AVR_PIN_GND2		52
 #define	AVR_PIN_PF7		53
 #define	AVR_PIN_PF6		54
 #define	AVR_PIN_PF5		55
@@ -84,9 +84,9 @@
 #define	AVR_PIN_PF2		58
 #define	AVR_PIN_PF1		59
 #define	AVR_PIN_PF0		60
-#define	AVR_PIN_AREF	61
-#define	AVR_PIN_GND3	62
-#define	AVR_PIN_AVCC	63
+#define	AVR_PIN_AREF		61
+#define	AVR_PIN_GND3		62
+#define	AVR_PIN_AVCC		63
 
 
 #endif

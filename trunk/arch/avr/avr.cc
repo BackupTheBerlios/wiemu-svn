@@ -22,12 +22,8 @@
 #include <cstdlib>
 #include <cstring>
 #include "avr.hh"
-#include <fstream>		// To be removed
-
-std::ofstream f;
 
 Avr::Avr(){
-	f.open("t0.txt");
 #ifdef DEBUG
 	std::cout << "Avr()" << std::endl;
 #endif
@@ -41,7 +37,7 @@ Avr::Avr(){
 	timer->setMem(this->sram);
 	timer->setFlash(this->flash);
 	this->nextInterrupt = 0;
-	this->cycles = -1;
+	this->cycles = 0;
 	this->instructions = 0;
 	this->watchdog_timer = 0;
 	this->stopped = false;
@@ -97,7 +93,7 @@ Avr::loadImage(std::string image){
 
 unsigned int
 Avr::getCycles(void){
-		return this->cycles + 1;
+		return this->cycles;
 }
 
 Pin*
@@ -151,275 +147,261 @@ void
 Avr::step(void){
 	regs.oldpc = regs.pc;
 
+	if(stopped)
+		return;
 	if(nextInterrupt){
 		uint64_t cycles_prev = this->cycles;
 		interrupt(nextInterrupt);
 		nextInterrupt = 0;
-		//std::cout << "(int)TCNT0 = 0x" << std::hex << timer->getTCNT0() << std::dec;
-		//std::cout << " CLK = " << cycles - cycles_prev;
-
 		timer->update(cycles - cycles_prev);
-
-		//std::cout << " (A)TCNT0 = 0x" << std::hex << timer->getTCNT0() << std::dec << std::endl;
 	}
-
-	if(this->regs.pc*2 >= fw.getSize()){
-		std::cout << "FLASH: ILLEGAL ADDRESS: ";
-		std::cout << std::hex << this->regs.pc*2 << std::dec << std::endl;
-		this->stopped = true;
-		return;
-	}
-	opcode = this->flash[this->regs.pc];
-#ifdef DEBUG
-	std::cout << "PC=" << std::hex << std::setw(4) << this->regs.pc*2 /*<< ", opcode=" << std::setw(4) << (int)opcode << ", "*/;
-	std::cout << std::dec << "\t";
-#endif
 
 	uint64_t cycles_prev = this->cycles;
 	readPins();
 
-	if((opcode & MSK_ADC) == OP_ADC)
-		_adc();
-	else if((opcode & MSK_ADD) == OP_ADD)
-		_add();
-	else if((opcode & MSK_ADIW) == OP_ADIW)
-		_adiw();
-	else if((opcode & MSK_AND) == OP_AND)
-		_and();
-	else if((opcode & MSK_ANDI) == OP_ANDI)
-		_andi();
-	else if((opcode & MSK_ASR) == OP_ASR)
-		_asr();
-	else if((opcode & MSK_BCLR) == OP_BCLR)
-		_bclr();
-	else if((opcode & MSK_BLD) == OP_BLD)
-		_bld();
-	else if((opcode & MSK_BRBC) == OP_BRBC)
-		_brbc();
-	else if((opcode & MSK_BRBS) == OP_BRBS)
-		_brbs();
-	else if((opcode & MSK_BREAK) == OP_BREAK)
-		_break();
-	else if((opcode & MSK_BSET) == OP_BSET)
-		_bset();
-	else if((opcode & MSK_BST) == OP_BST)
-		_bst();
-	else if((opcode & MSK_CALL) == OP_CALL)
-		_call();
-	else if((opcode & MSK_CBI) == OP_CBI)
-		_cbi();
-	else if((opcode & MSK_COM) == OP_COM)
-		_com();
-	else if((opcode & MSK_CP) == OP_CP)
-		_cp();
-	else if((opcode & MSK_CPC) == OP_CPC)
-		_cpc();
-	else if((opcode & MSK_CPI) == OP_CPI)
-		_cpi();
-	else if((opcode & MSK_CPSE) == OP_CPSE)
-		_cpse();
-	else if((opcode & MSK_DEC) == OP_DEC)
-		_dec();
-	else if((opcode & MSK_ELPM1) == OP_ELPM1)
-		_elpm();
-	else if((opcode & MSK_ELPM2) == OP_ELPM2)
-		_elpm();
-	else if((opcode & MSK_ELPM3) == OP_ELPM3)
-		_elpm();
-	else if((opcode & MSK_EOR) == OP_EOR)
-		_eor();
-	else if((opcode & MSK_FMUL) == OP_FMUL)
-		_fmul();
-	else if((opcode & MSK_FMULS) == OP_FMULS)
-		_fmuls();
-	else if((opcode & MSK_FMULSU) == OP_FMULSU)
-		_fmulsu();
-	else if((opcode & MSK_ICALL) == OP_ICALL)
-		_icall();
-	else if((opcode & MSK_IJMP) == OP_IJMP)
-		_ijmp();
-	else if((opcode & MSK_IN) == OP_IN)
-		_in();
-	else if((opcode & MSK_INC) == OP_INC)
-		_inc();
-	else if((opcode & MSK_JMP) == OP_JMP)
-		_jmp();
-	else if((opcode & MSK_LDI) == OP_LDI)
-		_ldi();
-	// Conflicts with STY4 (st Y+q)
-	/**
-	else if((opcode & MSK_LDS) == OP_LDS)
-		_lds();
-	**/
-	else if((opcode & MSK_LDS32) == OP_LDS32)
-		_lds32();
-	else if((opcode & MSK_LDX1) == OP_LDX1)
-		_ldx();
-	else if((opcode & MSK_LDX2) == OP_LDX2)
-		_ldx();
-	else if((opcode & MSK_LDX3) == OP_LDX3)
-		_ldx();
-	/**
-	else if((opcode & MSK_LDY1) == OP_LDY1)
-		_ldy();
-	**/
-	else if((opcode & MSK_LDY2) == OP_LDY2)
-		_ldy();
-	else if((opcode & MSK_LDY3) == OP_LDY3)
-		_ldy();
-	else if((opcode & MSK_LDY4) == OP_LDY4)
-		_ldy();
-	/**
-	else if((opcode & MSK_LDZ1) == OP_LDZ1)
-		_ldz();
-	**/
-	else if((opcode & MSK_LDZ2) == OP_LDZ2)
-		_ldz();
-	else if((opcode & MSK_LDZ3) == OP_LDZ3)
-		_ldz();
-	else if((opcode & MSK_LDZ4) == OP_LDZ4)
-		_ldz();
-	else if((opcode & MSK_LPM1) == OP_LPM1)
-		_lpm();
-	else if((opcode & MSK_LPM2) == OP_LPM2)
-		_lpm();
-	else if((opcode & MSK_LPM3) == OP_LPM3)
-		_lpm();
-	else if((opcode & MSK_LSR) == OP_LSR)
-		_lsr();
-	else if((opcode & MSK_MOV) == OP_MOV)
-		_mov();
-	else if((opcode & MSK_MOVW) == OP_MOVW)
-		_movw();
-	else if((opcode & MSK_MUL) == OP_MUL)
-		_mul();
-	else if((opcode & MSK_MULS) == OP_MULS)
-		_muls();
-	else if((opcode & MSK_MULSU) == OP_MULSU)
-		_mulsu();
-	else if((opcode & MSK_NEG) == OP_NEG)
-		_neg();
-	else if((opcode & MSK_NOP) == OP_NOP)
-		_nop();
-	else if((opcode & MSK_OR) == OP_OR)
-		_or();
-	else if((opcode & MSK_ORI) == OP_ORI)
-		_ori();
-	else if((opcode & MSK_OUT) == OP_OUT)
-		_out();
-	else if((opcode & MSK_POP) == OP_POP)
-		_pop();
-	else if((opcode & MSK_PUSH) == OP_PUSH)
-		_push();
-	else if((opcode & MSK_RCALL) == OP_RCALL)
-		_rcall();
-	else if((opcode & MSK_RET) == OP_RET)
-		_ret();
-	else if((opcode & MSK_RETI) == OP_RETI)
-		_reti();
-	else if((opcode & MSK_RJMP) == OP_RJMP)
-		_rjmp();
-	else if((opcode & MSK_ROR) == OP_ROR)
-		_ror();
-	else if((opcode & MSK_SBC) == OP_SBC)
-		_sbc();
-	else if((opcode & MSK_SBCI) == OP_SBCI)
-		_sbci();
-	else if((opcode & MSK_SBI) == OP_SBI)
-		_sbi();
-	else if((opcode & MSK_SBIC) == OP_SBIC)
-		_sbic();
-	else if((opcode & MSK_SBIS) == OP_SBIS)
-		_sbis();
-	else if((opcode & MSK_SBIW) == OP_SBIW)
-		_sbiw();
-	else if((opcode & MSK_SBRC) == OP_SBRC)
-		_sbrc();
-	else if((opcode & MSK_SBRS) == OP_SBRS)
-		_sbrs();
-	else if((opcode & MSK_SLEEP) == OP_SLEEP)
-		_sleep();
-	else if((opcode & MSK_STX1) == OP_STX1)
-		_stx();
-	else if((opcode & MSK_STX1) == OP_STX2)
-		_stx();
-	else if((opcode & MSK_STX1) == OP_STX3)
-		_stx();
-	//else if((opcode & MSK_STY1) == OP_STY1)
-	//	_sty();
-	else if((opcode & MSK_STY2) == OP_STY2)
-		_sty();
-	else if((opcode & MSK_STY3) == OP_STY3)
-		_sty();
-	else if((opcode & MSK_STY4) == OP_STY4)
-		_sty();
-	//else if((opcode & MSK_STZ1) == OP_STZ1)
-	//	_stz();
-	else if((opcode & MSK_STZ2) == OP_STZ2)
-		_stz();
-	else if((opcode & MSK_STZ3) == OP_STZ3)
-		_stz();
-	else if((opcode & MSK_STZ4) == OP_STZ4)
-		_stz();
-	// Conflicts with STZ4 (st Y+q)
-	/**
-	else if((opcode & MSK_STS) == OP_STS)
-		_sts();
-	**/
-	else if((opcode & MSK_STS32) == OP_STS32)
-		_sts32();
-	else if((opcode & MSK_SUB) == OP_SUB)
-		_sub();
-	else if((opcode & MSK_SUBI) == OP_SUBI)
-		_subi();
-	else if((opcode & MSK_SWAP) == OP_SWAP)
-		_swap();
-	else if((opcode & MSK_WDR) == OP_WDR)
-		_wdr();
-	else
-		illegal();
-
-	//std::cout << "TCNT0 = 0x" << std::hex << timer->getTCNT0() << std::dec;
-	//std::cout << " CLK = " << cycles - cycles_prev;
+	if(this->sleeping == false){
+		if(this->regs.pc*2 >= fw.getSize()){
+			std::cout << "FLASH: ILLEGAL ADDRESS: ";
+			std::cout << std::hex << this->regs.pc*2 << std::dec << std::endl;
+			this->stopped = true;
+			return;
+		}
+		opcode = this->flash[this->regs.pc];
+#ifdef DEBUG
+		std::cout << "PC=" << std::hex << std::setw(4) << this->regs.pc*2 /*<< ", opcode=" << std::setw(4) << (int)opcode << ", "*/;
+		std::cout << std::dec << "\t";
+#endif
+		if((opcode & MSK_ADC) == OP_ADC)
+			_adc();
+		else if((opcode & MSK_ADD) == OP_ADD)
+			_add();
+		else if((opcode & MSK_ADIW) == OP_ADIW)
+			_adiw();
+		else if((opcode & MSK_AND) == OP_AND)
+			_and();
+		else if((opcode & MSK_ANDI) == OP_ANDI)
+			_andi();
+		else if((opcode & MSK_ASR) == OP_ASR)
+			_asr();
+		else if((opcode & MSK_BCLR) == OP_BCLR)
+			_bclr();
+		else if((opcode & MSK_BLD) == OP_BLD)
+			_bld();
+		else if((opcode & MSK_BRBC) == OP_BRBC)
+			_brbc();
+		else if((opcode & MSK_BRBS) == OP_BRBS)
+			_brbs();
+		else if((opcode & MSK_BREAK) == OP_BREAK)
+			_break();
+		else if((opcode & MSK_BSET) == OP_BSET)
+			_bset();
+		else if((opcode & MSK_BST) == OP_BST)
+			_bst();
+		else if((opcode & MSK_CALL) == OP_CALL)
+			_call();
+		else if((opcode & MSK_CBI) == OP_CBI)
+			_cbi();
+		else if((opcode & MSK_COM) == OP_COM)
+			_com();
+		else if((opcode & MSK_CP) == OP_CP)
+			_cp();
+		else if((opcode & MSK_CPC) == OP_CPC)
+			_cpc();
+		else if((opcode & MSK_CPI) == OP_CPI)
+			_cpi();
+		else if((opcode & MSK_CPSE) == OP_CPSE)
+			_cpse();
+		else if((opcode & MSK_DEC) == OP_DEC)
+			_dec();
+		else if((opcode & MSK_ELPM1) == OP_ELPM1)
+			_elpm();
+		else if((opcode & MSK_ELPM2) == OP_ELPM2)
+			_elpm();
+		else if((opcode & MSK_ELPM3) == OP_ELPM3)
+			_elpm();
+		else if((opcode & MSK_EOR) == OP_EOR)
+			_eor();
+		else if((opcode & MSK_FMUL) == OP_FMUL)
+			_fmul();
+		else if((opcode & MSK_FMULS) == OP_FMULS)
+			_fmuls();
+		else if((opcode & MSK_FMULSU) == OP_FMULSU)
+			_fmulsu();
+		else if((opcode & MSK_ICALL) == OP_ICALL)
+			_icall();
+		else if((opcode & MSK_IJMP) == OP_IJMP)
+			_ijmp();
+		else if((opcode & MSK_IN) == OP_IN)
+			_in();
+		else if((opcode & MSK_INC) == OP_INC)
+			_inc();
+		else if((opcode & MSK_JMP) == OP_JMP)
+			_jmp();
+		else if((opcode & MSK_LDI) == OP_LDI)
+			_ldi();
+		// Conflicts with STY4 (st Y+q)
+		/**
+			else if((opcode & MSK_LDS) == OP_LDS)
+				_lds();
+		**/
+		else if((opcode & MSK_LDS32) == OP_LDS32)
+			_lds32();
+		else if((opcode & MSK_LDX1) == OP_LDX1)
+			_ldx();
+		else if((opcode & MSK_LDX2) == OP_LDX2)
+			_ldx();
+		else if((opcode & MSK_LDX3) == OP_LDX3)
+			_ldx();
+		/**
+			else if((opcode & MSK_LDY1) == OP_LDY1)
+				_ldy();
+		**/
+		else if((opcode & MSK_LDY2) == OP_LDY2)
+			_ldy();
+		else if((opcode & MSK_LDY3) == OP_LDY3)
+			_ldy();
+		else if((opcode & MSK_LDY4) == OP_LDY4)
+			_ldy();
+		/**
+			else if((opcode & MSK_LDZ1) == OP_LDZ1)
+				_ldz();
+		**/
+		else if((opcode & MSK_LDZ2) == OP_LDZ2)
+			_ldz();
+		else if((opcode & MSK_LDZ3) == OP_LDZ3)
+			_ldz();
+		else if((opcode & MSK_LDZ4) == OP_LDZ4)
+			_ldz();
+		else if((opcode & MSK_LPM1) == OP_LPM1)
+			_lpm();
+		else if((opcode & MSK_LPM2) == OP_LPM2)
+			_lpm();
+		else if((opcode & MSK_LPM3) == OP_LPM3)
+			_lpm();
+		else if((opcode & MSK_LSR) == OP_LSR)
+			_lsr();
+		else if((opcode & MSK_MOV) == OP_MOV)
+			_mov();
+		else if((opcode & MSK_MOVW) == OP_MOVW)
+			_movw();
+		else if((opcode & MSK_MUL) == OP_MUL)
+			_mul();
+		else if((opcode & MSK_MULS) == OP_MULS)
+			_muls();
+		else if((opcode & MSK_MULSU) == OP_MULSU)
+			_mulsu();
+		else if((opcode & MSK_NEG) == OP_NEG)
+			_neg();
+		else if((opcode & MSK_NOP) == OP_NOP)
+			_nop();
+		else if((opcode & MSK_OR) == OP_OR)
+			_or();
+		else if((opcode & MSK_ORI) == OP_ORI)
+			_ori();
+		else if((opcode & MSK_OUT) == OP_OUT)
+			_out();
+		else if((opcode & MSK_POP) == OP_POP)
+			_pop();
+		else if((opcode & MSK_PUSH) == OP_PUSH)
+			_push();
+		else if((opcode & MSK_RCALL) == OP_RCALL)
+			_rcall();
+		else if((opcode & MSK_RET) == OP_RET)
+			_ret();
+		else if((opcode & MSK_RETI) == OP_RETI)
+			_reti();
+		else if((opcode & MSK_RJMP) == OP_RJMP)
+			_rjmp();
+		else if((opcode & MSK_ROR) == OP_ROR)
+			_ror();
+		else if((opcode & MSK_SBC) == OP_SBC)
+			_sbc();
+		else if((opcode & MSK_SBCI) == OP_SBCI)
+			_sbci();
+		else if((opcode & MSK_SBI) == OP_SBI)
+			_sbi();
+		else if((opcode & MSK_SBIC) == OP_SBIC)
+			_sbic();
+		else if((opcode & MSK_SBIS) == OP_SBIS)
+			_sbis();
+		else if((opcode & MSK_SBIW) == OP_SBIW)
+			_sbiw();
+		else if((opcode & MSK_SBRC) == OP_SBRC)
+			_sbrc();
+		else if((opcode & MSK_SBRS) == OP_SBRS)
+			_sbrs();
+		else if((opcode & MSK_SLEEP) == OP_SLEEP)
+			_sleep();
+		else if((opcode & MSK_STX1) == OP_STX1)
+			_stx();
+		else if((opcode & MSK_STX1) == OP_STX2)
+			_stx();
+		else if((opcode & MSK_STX1) == OP_STX3)
+			_stx();
+		//else if((opcode & MSK_STY1) == OP_STY1)
+		//	_sty();
+		else if((opcode & MSK_STY2) == OP_STY2)
+			_sty();
+		else if((opcode & MSK_STY3) == OP_STY3)
+			_sty();
+		else if((opcode & MSK_STY4) == OP_STY4)
+			_sty();
+		//else if((opcode & MSK_STZ1) == OP_STZ1)
+		//	_stz();
+		else if((opcode & MSK_STZ2) == OP_STZ2)
+			_stz();
+		else if((opcode & MSK_STZ3) == OP_STZ3)
+			_stz();
+		else if((opcode & MSK_STZ4) == OP_STZ4)
+			_stz();
+		// Conflicts with STZ4 (st Y+q)
+		/**
+			else if((opcode & MSK_STS) == OP_STS)
+				_sts();
+		**/
+		else if((opcode & MSK_STS32) == OP_STS32)
+			_sts32();
+		else if((opcode & MSK_SUB) == OP_SUB)
+			_sub();
+		else if((opcode & MSK_SUBI) == OP_SUBI)
+			_subi();
+		else if((opcode & MSK_SWAP) == OP_SWAP)
+			_swap();
+		else if((opcode & MSK_WDR) == OP_WDR)
+			_wdr();
+		else
+			illegal();
+		// Increment the instructions' counter
+		instructions++;
+	}else{
+		if(sram[REG_MCUCR + AVR_IO_BASE] & (1 << 5))
+			++cycles;
+	}
 
 	timer->update(cycles - cycles_prev);
-
-	//std::cout << " (A)TCNT0 = 0x" << std::hex << timer->getTCNT0() << std::dec << std::endl;
 
 	writePins();
 	for(unsigned int i=0 ; i<this->devices.size() ; i++)
 		this->devices[i]->probe(cycles_prev);
-	instructions++;
-
-	f << "TCNT0 = 0x" << std::hex << timer->getTCNT0() << std::dec << std::endl;
-	f.flush();
 }
 
 void
 Avr::run(){
-		std::ofstream logf("wiemu.log");
+		//std::ofstream logf("wiemu.log");
 		while(true){
 			if(this->stopped)
 				break;
-			if(this->sleeping){
-				std::cerr << "SLEEPING" << std::endl;
-				break;
-				//continue;
-			}
+			//if(this->sleeping){
+				//std::cerr << "SLEEPING" << std::endl;
+				//cycles++;
+				//timer->update(1);
+			//}
 			//uint16_t pc = this->regs.pc;
+			//logf << "PC = " << std::hex << this->regs.pc*2 << std::dec << std::endl;
 			step();
-			//logf << this->regs.dump3(regs.oldpc, this->cycles) << std::endl;
-			/*
-			if(this->regs.pc*2 == 0x674){
-				std::string log = this->regs.dump2();
-				std::ofstream logf("reg.log");
-				logf << log << std::endl;
-				logf.close();
-				break;
-			}*/
 		}
 		regs.dump();
-		logf.close();
+		//logf.close();
 }
 
 void
@@ -2282,7 +2264,7 @@ Avr::_elpm(){
 	// High or Low byte ?
 	if(this->regs.getZ() & 0x1)	// High
 		byte = word >> 8;
-	else						// Low
+	else				// Low
 		byte = word & 0xff;
 	if((this->opcode & MSK_ELPM1) == OP_ELPM1){
 		this->regs.r[REG_R0] = byte;
@@ -2322,11 +2304,21 @@ Avr::addDevice(Device *d)
 }
 
 void
+Avr::awake()
+{
+	if(this->sleeping){
+		sleeping = false;
+		this->cycles += 4;
+	}
+}
+
+void
 Avr::fireInterrupt(uint8_t intr)
 {
 	if(this->regs.isI()){
-		std::cout << std::endl;
-		step();
+		//std::cerr << "Interrupt [" << (int)intr << "]" << std::endl;
+		awake();
+		//std::cout << std::endl;
 		nextInterrupt = intr;
 	}
 }

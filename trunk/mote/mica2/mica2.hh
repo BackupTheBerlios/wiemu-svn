@@ -21,6 +21,7 @@
 
 #include "../../arch/avr/avr.hh"
 #include "leds.hh"
+#include "cc1000.hh"
 
 class Mica2{
 public:
@@ -34,6 +35,7 @@ public:
 private:
 	Avr mcu;
 	Leds leds;
+	CC1000 cc1000;
 };
 
 #endif

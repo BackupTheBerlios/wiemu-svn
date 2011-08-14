@@ -327,6 +327,7 @@ private:
 	void _lpm();
 	void _elpm();
 	void illegal();
+	void awake();
 	void interrupt(uint8_t);
 	void fireInterrupt(uint8_t);
 public:

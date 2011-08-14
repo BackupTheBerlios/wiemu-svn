@@ -31,6 +31,7 @@ Timer::Timer(Avr *avr){
 	assr = 0;
 	tifr = 0;
 	timsk = 0;
+	sleep = false;
 	// Timer0
 	ticks0 = 0;
 	t0_run = false;
@@ -72,6 +73,9 @@ Timer::inp(uint8_t port){
 	else if(port == OCR0){
 		mem[OCR0 + AVR_IO_BASE] = ocr0;
 	}
+	else if(port == ASSR){
+		mem[ASSR + AVR_IO_BASE] = assr;
+	}
 	else if(port == TCNT1L){
 		mem[TCNT1L + AVR_IO_BASE] = (uint8_t)(tcnt1);
 		temp1 = (uint8_t)(tcnt1 >> 8);			// Copy TCNTL1H to TEMP Reg
@@ -82,16 +86,18 @@ Timer::inp(uint8_t port){
 	else if(port == TCCR1B){
 		mem[TCCR1B + AVR_IO_BASE] = tccr1b;
 	}
-	else if(port == ASSR){
-		mem[ASSR + AVR_IO_BASE] = assr;
-	}
+	//else if(port == OCR1A){
+	//	mem[OCR1A + AVR_IO_BASE] = ocr1a;
+	//}
+	//else if(port == OCR1B){
+	//	mem[OCR1B + AVR_IO_BASE] = ocr1b;
+	//}
 	else if(port == TIMSK){
 		mem[TIMSK + AVR_IO_BASE] = timsk;
 	}
 	else if(port == TIFR){
 		mem[TIFR + AVR_IO_BASE] = tifr;
 	}
-	else std::cerr << "IN " << (int)port << std::endl;
 }
 
 void
@@ -100,6 +106,8 @@ Timer::outp(uint8_t port){
 		setTCNT0();
 	else if(port == TCCR0)
 		setTCCR0();
+	else if(port == ASSR)
+		setASSR();
 	else if(port == TCCR1B)
 		setTCCR1B();
 	else if(port == OCR0)
@@ -108,13 +116,14 @@ Timer::outp(uint8_t port){
 		setTCNT1L();
 	else if(port == TCNT1H)
 		setTCNT1H();
-	else if(port == ASSR)
-		setASSR();
+	//else if(port == OCR1A)
+	//	setOCR1A();
+	//else if(port == OCR1B)
+	//	setOCR1B();
 	else if(port == TIMSK)
 		setTIMSK();
 	else if(port == TIFR)
 		setTIFR();
-	else std::cerr << "OUT " << (int)port << std::endl;
 }
 
 void
@@ -232,30 +241,32 @@ Timer::updateTimer0(){
 		if(ticks0 % (ASYNC_DIV * t0_cs) == 0 && ticks0 != 0)
 			tcnt0++;
 	}
-	// Check for Overflow
-	if(tcnt0 == 0){
-		tifr |= (1 << TOV0);
-	}
-	// Compare Match
-	if(tcnt0_prev == ocr0){
-		tifr |= (1 << OCF0);
-	}
-	/**
-		Interrupts
-	**/	
-	// Compare Match Interrupt
-	if((timsk & (1 << OCIE0)) && (tifr & (1 << OCF0))){
-		// Clear OCF0
-		tifr &= ~(1 << OCF0);
-		// Interrupt
-		avr->fireInterrupt(15); 
-	}
-	// Overflow Interrupt
-	else if((timsk & (1 << TOIE0)) && (tifr & (1 << TOV0))){
-		// Clear TOV0
-		tifr &= ~(1 << TOV0);
-		// Interrupt
-		avr->fireInterrupt(16);
+	if(tcnt0_prev != tcnt0){
+		// Check for Overflow
+		if(tcnt0 == 0){
+			tifr |= (1 << TOV0);
+		}
+		// Compare Match
+		if(tcnt0_prev == ocr0){
+			tifr |= (1 << OCF0);
+		}
+		/**
+			Interrupts
+		**/	
+		// Compare Match Interrupt
+		if((timsk & (1 << OCIE0)) && (tifr & (1 << OCF0))){
+			// Clear OCF0
+			tifr &= ~(1 << OCF0);
+			// Interrupt
+			avr->fireInterrupt(15);
+		}
+		// Overflow Interrupt
+		else if((timsk & (1 << TOIE0)) && (tifr & (1 << TOV0))){
+			// Clear TOV0
+			tifr &= ~(1 << TOV0);
+			// Interrupt
+			avr->fireInterrupt(16);
+		}
 	}
 }
 
@@ -314,7 +325,6 @@ Timer::setTCNT1H(){
 
 void
 Timer::updateTimer1(){
-	//std::cerr << "T1 updating..." << tcnt1 << std::endl;
 	uint16_t tcnt1_prev = tcnt1;
 	if(!async1){
 		if(ticks1 % t1_cs == 0 && ticks1 != 0)
@@ -323,36 +333,38 @@ Timer::updateTimer1(){
 		if(ticks1 % (ASYNC_DIV * t1_cs) == 0 && ticks1 != 0)
 			tcnt1++;
 	}
-	// Check for Overflow
-	if(tcnt1 == 0){
-		tifr |= (1 << TOV1);
-	}
-	// Compare Match
-	if(tcnt1_prev == ocr1a){
-		tifr |= (1 << OCF1A);
-	}
-	if(tcnt1_prev == ocr1b){
-		tifr |= (1 << OCF1B);
-	}
-	// Compare Match Interrupt
-	if((timsk & (1 << OCIE1A)) && (tifr & (1 << OCF1A))){
-		// Clear OCF1A
-		tifr &= ~(1 << OCF1A);
-		// Interrupt
-		avr->fireInterrupt(12); 
-	}
-	if((timsk & (1 << OCIE1B)) && (tifr & (1 << OCF1B))){
-		// Clear OCF1B
-		tifr &= ~(1 << OCF1B);
-		// Interrupt
-		avr->fireInterrupt(13); 
-	}
-	// Overflow Interrupt
-	else if((timsk & (1 << TOIE1)) && (tifr & (1 << TOV1))){
-		// Clear TOV1
-		tifr &= ~(1 << TOV1);
-		// Interrupt
-		avr->fireInterrupt(14);
+	if(tcnt1_prev != tcnt1){
+		// Check for Overflow
+		if(tcnt1 == 0){
+			tifr |= (1 << TOV1);
+		}
+		// Compare Match
+		if(tcnt1_prev == ocr1a){
+			tifr |= (1 << OCF1A);
+		}
+		if(tcnt1_prev == ocr1b){
+			tifr |= (1 << OCF1B);
+		}
+		// Compare Match Interrupt
+		if((timsk & (1 << OCIE1A)) && (tifr & (1 << OCF1A))){
+			// Clear OCF1A
+			tifr &= ~(1 << OCF1A);
+			// Interrupt
+			avr->fireInterrupt(12); 
+		}
+		if((timsk & (1 << OCIE1B)) && (tifr & (1 << OCF1B))){
+			// Clear OCF1B
+			tifr &= ~(1 << OCF1B);
+			// Interrupt
+			avr->fireInterrupt(13);
+		}
+		// Overflow Interrupt
+		else if((timsk & (1 << TOIE1)) && (tifr & (1 << TOV1))){
+			// Clear TOV1
+			tifr &= ~(1 << TOV1);
+			// Interrupt
+			avr->fireInterrupt(14);
+		}
 	}
 }
 
