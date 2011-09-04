@@ -84,14 +84,16 @@
 
 #define	REG_MCUCR	0x35
 
+class Avr;
+
 class Regs{
 public:
-	uint8_t *r;
 	uint16_t pc;
 	uint16_t oldpc;
 	Regs();
+	Regs(Avr *);
 	~Regs();
-	void setMem(uint8_t *);
+	uint8_t& operator[](const int);
 	void init();
 	void dump(void);
 	std::string dump2(void);
@@ -130,6 +132,7 @@ public:
 	void setSP(uint16_t);
 	std::string getName(unsigned int);
 private:
+	Avr *avr;
 	static const std::string reg_names[];
 };
 

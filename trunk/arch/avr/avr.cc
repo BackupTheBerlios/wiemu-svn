@@ -28,23 +28,26 @@ Avr::Avr(){
 	std::cout << "Avr()" << std::endl;
 #endif
 	initPins();
-	initSRAM(0x1000);			// 4 KB SRAM
+	sram = new Mem(this);
 	initFLASH(0x10000);			// 128 KB Flash
 	initEEPROM(0x1000);			// 4 KB EEPROM
-	regs.setMem(this->sram);
-	regs.init();
-	timer = new Timer(this);
-	timer->setMem(this->sram);
-	timer->setFlash(this->flash);
-	this->nextInterrupt = 0;
-	this->cycles = 0;
-	this->instructions = 0;
-	this->watchdog_timer = 0;
-	this->stopped = false;
-	this->sleeping = false;
+	regs = new Regs(this);
+	regs->init();
+	timer = new Timer();
+	timer->setMCU(this);
+	spi = new Spi();
+	spi->setMCU(this);
+	addInternalDevice((InternalDevice*)spi);
+	nextInterrupt = 0;
+	clock.reset();
+	clock.setFreq(AVR_FREQ);
+	instructions = 0;
+	watchdog_timer = 0;
+	stopped = false;
+	sleeping = false;
 	
 #ifdef DEBUG
-	regs.dump();
+	regs->dump();
 #endif
 	std::cout << "SRAM Size = " << (this->msize/1024) << " KB" << std::endl;
 	std::cout << "FLASH Size = " << (this->fsize/1024) << " KB" << std::endl;
@@ -55,25 +58,22 @@ Avr::~Avr(){
 #ifdef DEBUG
 	std::cout << "~Avr()" << std::endl;
 #endif
-}
-
-void
-Avr::initSRAM(unsigned int size){
-		this->msize = size * sizeof(uint8_t);
-		// + 0x100 = 32 Regs + 64 I/O + 160 Additional I/O
-		this->sram = (uint8_t *)malloc(this->msize + 0x100);
+	delete regs;
+	delete sram;
+	delete timer;
+	delete spi;
 }
 
 void
 Avr::initFLASH(unsigned int size){
-		this->fsize = size * sizeof(uint16_t);
-		this->flash = (uint16_t *)malloc(this->fsize);
+	this->fsize = size * sizeof(uint16_t);
+	this->flash = (uint16_t *)malloc(this->fsize);
 }
 
 void
 Avr::initEEPROM(unsigned int size){
-		this->esize = size * sizeof(uint8_t);
-		this->eeprom = (uint8_t *)malloc(this->esize);
+	this->esize = size * sizeof(uint8_t);
+	this->eeprom = (uint8_t *)malloc(this->esize);
 }
 
 void
@@ -91,9 +91,14 @@ Avr::loadImage(std::string image){
 	bcopy(m, this->flash, fw.getSize());
 }
 
-unsigned int
+uint64_t
 Avr::getCycles(void){
-		return this->cycles;
+	return clock.getCycles();
+}
+
+Clock
+Avr::getClock(void){
+	return clock;
 }
 
 Pin*
@@ -145,30 +150,30 @@ Avr::reverseEndian(uint16_t &word){
 
 void
 Avr::step(void){
-	regs.oldpc = regs.pc;
+	regs->oldpc = regs->pc;
 
 	if(stopped)
 		return;
-	if(nextInterrupt){
-		uint64_t cycles_prev = this->cycles;
-		interrupt(nextInterrupt);
-		nextInterrupt = 0;
-		timer->update(cycles - cycles_prev);
+	if(!interrupts.empty()){
+		Clock clock_prev = clock;
+		interrupt(interrupts.front());
+		interrupts.pop();
+		timer->update(clock - clock_prev);
 	}
 
-	uint64_t cycles_prev = this->cycles;
+	Clock clock_prev = clock;
 	readPins();
 
 	if(this->sleeping == false){
-		if(this->regs.pc*2 >= fw.getSize()){
+		if(regs->pc*2 >= fw.getSize()){
 			std::cout << "FLASH: ILLEGAL ADDRESS: ";
-			std::cout << std::hex << this->regs.pc*2 << std::dec << std::endl;
+			std::cout << std::hex << regs->pc*2 << std::dec << std::endl;
 			this->stopped = true;
 			return;
 		}
-		opcode = this->flash[this->regs.pc];
+		opcode = this->flash[regs->pc];
 #ifdef DEBUG
-		std::cout << "PC=" << std::hex << std::setw(4) << this->regs.pc*2 /*<< ", opcode=" << std::setw(4) << (int)opcode << ", "*/;
+		std::cout << "PC=" << std::hex << std::setw(4) << regs->pc*2 /*<< ", opcode=" << std::setw(4) << (int)opcode << ", "*/;
 		std::cout << std::dec << "\t";
 #endif
 		if((opcode & MSK_ADC) == OP_ADC)
@@ -374,15 +379,15 @@ Avr::step(void){
 		// Increment the instructions' counter
 		instructions++;
 	}else{
-		if(sram[REG_MCUCR + AVR_IO_BASE] & (1 << 5))
-			++cycles;
+		if((*sram)[REG_MCUCR + AVR_IO_BASE] & (1 << 5))
+			clock++;
+		else // TODO:
+			std::cerr << "WAKEUP :)" << std::endl;
 	}
 
-	timer->update(cycles - cycles_prev);
+	timer->update(clock - clock_prev);
 
 	writePins();
-	for(unsigned int i=0 ; i<this->devices.size() ; i++)
-		this->devices[i]->probe(cycles_prev);
 }
 
 void
@@ -393,21 +398,21 @@ Avr::run(){
 				break;
 			//if(this->sleeping){
 				//std::cerr << "SLEEPING" << std::endl;
-				//cycles++;
+				//clock++;
 				//timer->update(1);
 			//}
-			//uint16_t pc = this->regs.pc;
-			//logf << "PC = " << std::hex << this->regs.pc*2 << std::dec << std::endl;
+			//uint16_t pc = regs->pc;
+			//logf << "PC = " << std::hex << regs->pc*2 << std::dec << std::endl;
 			step();
 		}
-		regs.dump();
+		regs->dump();
 		//logf.close();
 }
 
 void
 Avr::illegal(){
 		std::cout << "ILLEGAL INSTRUCTION" << std::endl;
-		this->regs.dump();
+		regs->dump();
 		this->stopped = true;
 }
 
@@ -415,40 +420,40 @@ void
 Avr::_add(){
 	uint8_t Rr = ((opcode >> 5) & 0x10) | (opcode & 0xf);
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint8_t R = this->regs.r[Rd] + this->regs.r[Rr];
+	uint8_t R =(*regs)[Rd] +(*regs)[Rr];
 	int n, v;
 	// check for the H flag
-	unsigned int Rr3 = getBit(this->regs.r[Rr], 3);
-	unsigned int Rd3 = getBit(this->regs.r[Rd], 3);
+	unsigned int Rr3 = getBit((*regs)[Rr], 3);
+	unsigned int Rd3 = getBit((*regs)[Rd], 3);
 	unsigned int R3 = getBit(R, 3);
-	if((Rd3&Rr3) | (Rr3&(!R3)) | ((!R3)&Rd3)) this->regs.setH();
-	else this->regs.clearH();
+	if((Rd3&Rr3) | (Rr3&(!R3)) | ((!R3)&Rd3)) regs->setH();
+	else regs->clearH();
 	// check for the C flag
-	unsigned int Rr7 = getBit(this->regs.r[Rr], 7);
-	unsigned int Rd7 = getBit(this->regs.r[Rd], 7);
+	unsigned int Rr7 = getBit((*regs)[Rr], 7);
+	unsigned int Rd7 = getBit((*regs)[Rd], 7);
 	unsigned int R7 = getBit(R, 7);
-	if((Rd7&Rr7) | (Rr7&(!R7)) | ((!R7)&Rd7)) this->regs.setC();
-	else this->regs.clearC();
+	if((Rd7&Rr7) | (Rr7&(!R7)) | ((!R7)&Rd7)) regs->setC();
+	else regs->clearC();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if((Rd7&Rr7&(!R7)) | ((!Rd7)&(!Rr7)&R7)) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if((Rd7&Rr7&(!R7)) | ((!Rd7)&(!Rr7)&R7)) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "add " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "add " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
@@ -456,41 +461,41 @@ Avr::_adc(){
 	uint8_t Rr = ((opcode >> 5) & 0x10) | (opcode & 0xf);
 	//uint8_t Rd = ((opcode >> 4) & 0x10) | ((opcode & 0x1f0) >> 4);
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint8_t R = this->regs.r[Rd] + this->regs.r[Rr];
-	if(this->regs.isC()) R += 1;
+	uint8_t R =(*regs)[Rd] +(*regs)[Rr];
+	if(regs->isC()) R += 1;
 	int n, v;
 	// check for the H flag
-	unsigned int Rr3 = getBit(this->regs.r[Rr], 3);
-	unsigned int Rd3 = getBit(this->regs.r[Rd], 3);
+	unsigned int Rr3 = getBit((*regs)[Rr], 3);
+	unsigned int Rd3 = getBit((*regs)[Rd], 3);
 	unsigned int R3 = getBit(R, 3);
-	if((Rd3&Rr3) | (Rr3&(!R3)) | ((!R3)&Rd3)) this->regs.setH();
-	else this->regs.clearH();
+	if((Rd3&Rr3) | (Rr3&(!R3)) | ((!R3)&Rd3)) regs->setH();
+	else regs->clearH();
 	// check for the C flag
-	unsigned int Rr7 = getBit(this->regs.r[Rr], 7);
-	unsigned int Rd7 = getBit(this->regs.r[Rd], 7);
+	unsigned int Rr7 = getBit((*regs)[Rr], 7);
+	unsigned int Rd7 = getBit((*regs)[Rd], 7);
 	unsigned int R7 = getBit(R, 7);
-	if((Rd7&Rr7) | (Rr7&(!R7)) | ((!R7)&Rd7)) this->regs.setC();
-	else this->regs.clearC();
+	if((Rd7&Rr7) | (Rr7&(!R7)) | ((!R7)&Rd7)) regs->setC();
+	else regs->clearC();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if((Rd7&Rr7&(!R7)) | ((!Rd7)&(!Rr7)&R7)) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if((Rd7&Rr7&(!R7)) | ((!Rd7)&(!Rr7)&R7)) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "adc " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "adc " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
@@ -498,153 +503,153 @@ Avr::_ldi(){
 	uint8_t Rd = ((opcode >> 4) & 0xf) + 16;
 	uint8_t K = ((opcode >> 4) & 0xf0) | (opcode & 0xf);
 	// write back the result
-	this->regs.r[Rd] = K;
+	(*regs)[Rd] = K;
 	
 	// disassemble
-	std::cout << "ldi " << this->regs.getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	std::cout << "ldi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_and(){
 	uint8_t Rr = ((opcode >> 5) & 0x10) | (opcode & 0xf);
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint8_t R = this->regs.r[Rd] & this->regs.r[Rr];
+	uint8_t R =(*regs)[Rd] &(*regs)[Rr];
 	unsigned int R7 = getBit(R, 7);
 	int n, v = 0;
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// clear the V flag
-	this->regs.clearV();
+	regs->clearV();
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "and " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "and " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_or(){
 	uint8_t Rr = ((opcode >> 5) & 0x10) | (opcode & 0xf);
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint8_t R = this->regs.r[Rd] | this->regs.r[Rr];
+	uint8_t R =(*regs)[Rd] |(*regs)[Rr];
 	unsigned int R7 = getBit(R, 7);
 	int n, v = 0;
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// clear the V flag
-	this->regs.clearV();
+	regs->clearV();
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "or " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "or " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_eor(){
 	uint8_t Rr = ((opcode >> 5) & 0x10) | (opcode & 0xf);
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint8_t R = this->regs.r[Rd] ^ this->regs.r[Rr];
+	uint8_t R =(*regs)[Rd] ^(*regs)[Rr];
 	unsigned int R7 = getBit(R, 7);
 	int n, v = 0;
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// clear the V flag
-	this->regs.clearV();
+	regs->clearV();
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "eor " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "eor " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_andi(){
 	uint8_t Rd = ((opcode >> 4) & 0xf) + 16;
 	uint8_t K = ((opcode >> 4) & 0xf0) | (opcode & 0xf);
-	uint8_t R = this->regs.r[Rd] & K;
+	uint8_t R =(*regs)[Rd] & K;
 	unsigned int R7 = getBit(R, 7);
 	int n, v = 0;
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// clear the V flag
-	this->regs.clearV();
+	regs->clearV();
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "andi " << this->regs.getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	std::cout << "andi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_ori(){
 	uint8_t Rd = ((opcode >> 4) & 0xf) + 16;
 	uint8_t K = ((opcode >> 4) & 0xf0) | (opcode & 0xf);
-	uint8_t R = this->regs.r[Rd] | K;
+	uint8_t R =(*regs)[Rd] | K;
 	unsigned int R7 = getBit(R, 7);
 	int n, v = 0;
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// clear the V flag
-	this->regs.clearV();
+	regs->clearV();
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "ori " << this->regs.getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	std::cout << "ori " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
@@ -652,101 +657,101 @@ Avr::_nop(){
 	// disassemble
 	std::cout << "nop" << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_mov(){
 	uint8_t Rr = (((opcode >> 5) & 0x10) | (opcode & 0xf));
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	this->regs.r[Rd] = this->regs.r[Rr];
+	(*regs)[Rd] =(*regs)[Rr];
 	
 	// disassemble
-	std::cout << "mov " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "mov " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_sub(){
 	uint8_t Rr = (((opcode >> 5) & 0x10) | (opcode & 0xf));
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint8_t R = this->regs.r[Rd] - this->regs.r[Rr];
+	uint8_t R =(*regs)[Rd] -(*regs)[Rr];
 	int n, v;
-	unsigned int Rr3 = getBit(this->regs.r[Rr], 3);
-	unsigned int Rd3 = getBit(this->regs.r[Rd], 3);
+	unsigned int Rr3 = getBit((*regs)[Rr], 3);
+	unsigned int Rd3 = getBit((*regs)[Rd], 3);
 	unsigned int R3 = getBit(R, 3);
-	unsigned int Rr7 = getBit(this->regs.r[Rr], 7);
-	unsigned int Rd7 = getBit(this->regs.r[Rd], 7);
+	unsigned int Rr7 = getBit((*regs)[Rr], 7);
+	unsigned int Rd7 = getBit((*regs)[Rd], 7);
 	unsigned int R7 = getBit(R, 7);
 	// check for the H flag
-	if(((!Rd3)&Rr3) | (Rr3&R3) | (R3&(!Rd3))) this->regs.setH();
-	else this->regs.clearH();
+	if(((!Rd3)&Rr3) | (Rr3&R3) | (R3&(!Rd3))) regs->setH();
+	else regs->clearH();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if((Rd7&(!Rr7)&(!R7)) | ((!Rd7)&Rr7&R7)) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if((Rd7&(!Rr7)&(!R7)) | ((!Rd7)&Rr7&R7)) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the C flag
-	if(((!Rd7)&Rr7) | (Rr7&R7) | (R7&(!Rd7))) this->regs.setC();
-	else this->regs.clearC();
+	if(((!Rd7)&Rr7) | (Rr7&R7) | (R7&(!Rd7))) regs->setC();
+	else regs->clearC();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 		
 	// disassemble
-	std::cout << "sub " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "sub " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 }
 
 void
 Avr::_subi(){
 	uint8_t Rd = ((opcode >> 4) & 0xf) + 16;
 	uint8_t K = (((opcode >> 4) & 0xf0) | (opcode & 0xf));
-	uint8_t R = this->regs.r[Rd] - K;
+	uint8_t R =(*regs)[Rd] - K;
 	int n, v;
-	unsigned int Rd3 = getBit(this->regs.r[Rd], 3);
+	unsigned int Rd3 = getBit((*regs)[Rd], 3);
 	unsigned int R3 = getBit(R, 3);
 	unsigned int K3 = getBit(K, 3);
-	unsigned int Rd7 = getBit(this->regs.r[Rd], 7);
+	unsigned int Rd7 = getBit((*regs)[Rd], 7);
 	unsigned int R7 = getBit(R, 7);
 	unsigned int K7 = getBit(K, 7);
 	// check for the H flag
-	if(((!Rd3)&K3) | (K3&R3) | (R3&(!Rd3))) this->regs.setH();
-	else this->regs.clearH();
+	if(((!Rd3)&K3) | (K3&R3) | (R3&(!Rd3))) regs->setH();
+	else regs->clearH();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if((Rd7&(!K7)&(!R7)) | ((!Rd7)&K7&R7)) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if((Rd7&(!K7)&(!R7)) | ((!Rd7)&K7&R7)) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the C flag
-	if(((!Rd7)&K7) | (K7&R7) | (R7&(!Rd7))) this->regs.setC();
-	else this->regs.clearC();
+	if(((!Rd7)&K7) | (K7&R7) | (R7&(!Rd7))) regs->setC();
+	else regs->clearC();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "subi " << this->regs.getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	std::cout << "subi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 		
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
@@ -755,34 +760,34 @@ Avr::_adiw(){
 	uint8_t K = (((opcode >> 2) & 0x30) | (opcode & 0xf));
 	uint8_t Rdl= (d << 1) + 24;			// Rd = 24 + Rd*2
 	uint8_t Rdh= Rdl + 1;				// Rd = 24 + Rd*2 + 1
-	uint16_t R = ((this->regs.r[Rdh] << 8) | (this->regs.r[Rdl])) + K;
+	uint16_t R = (((*regs)[Rdh] << 8) | ((*regs)[Rdl])) + K;
 	int n, v;
-	unsigned int Rdh7 = getBit(this->regs.r[Rdh], 7);
+	unsigned int Rdh7 = getBit((*regs)[Rdh], 7);
 	unsigned int R15 = getBit(R, 15);
 	// check for the N flag
-	if(R15) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R15) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if((!Rdh7) & R15) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if((!Rdh7) & R15) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the C flag
-	if((!R15)&Rdh7) this->regs.setC();
-	else this->regs.clearC();
+	if((!R15)&Rdh7) regs->setC();
+	else regs->clearC();
 	// write back the result
-	this->regs.r[Rdl] = (uint8_t)(R);
-	this->regs.r[Rdh] = (uint8_t)(R >> 8);
+	(*regs)[Rdl] = (uint8_t)(R);
+	(*regs)[Rdh] = (uint8_t)(R >> 8);
 
 	// disassemble
-	std::cout << "adiw " << this->regs.getName(Rdl) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	std::cout << "adiw " << regs->getName(Rdl) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
@@ -791,34 +796,34 @@ Avr::_sbiw(){
 	uint8_t K = (((opcode >> 2) & 0x30) | (opcode & 0xf));
 	uint8_t Rdl = (d << 1) + 24;			// Rd = 24 + Rd*2
 	uint8_t Rdh = Rdl + 1;					// Rd = 24 + Rd*2 + 1
-	uint16_t R = ((this->regs.r[Rdh] << 8) | (this->regs.r[Rdl])) - K;
+	uint16_t R = (((*regs)[Rdh] << 8) | ((*regs)[Rdl])) - K;
 	int n, v;
-	unsigned int Rdh7 = getBit(this->regs.r[Rdh], 7);
+	unsigned int Rdh7 = getBit((*regs)[Rdh], 7);
 	unsigned int R15 = getBit(R, 15);
 	// check for the N flag
-	if(R15) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R15) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if(Rdh7 & (!R15)) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if(Rdh7 & (!R15)) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the C flag
-	if(R15&(!Rdh7)) this->regs.setC();
-	else this->regs.clearC();
+	if(R15&(!Rdh7)) regs->setC();
+	else regs->clearC();
 	// write back the result
-	this->regs.r[Rdl] = (uint8_t)(R);
-	this->regs.r[Rdh] = (uint8_t)(R >> 8);
+	(*regs)[Rdl] = (uint8_t)(R);
+	(*regs)[Rdh] = (uint8_t)(R >> 8);
 	
 	// disassemble
-	std::cout << "sbiw " << this->regs.getName(Rdl) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	std::cout << "sbiw " << regs->getName(Rdl) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
@@ -827,40 +832,40 @@ Avr::_bclr(){
 	switch(s){
 			case 0:
 				std::cout << "clc" << std::endl;
-				this->regs.clearC();
+				regs->clearC();
 				break;
 			case 1:
 				std::cout << "clz" << std::endl;
-				this->regs.clearZ();
+				regs->clearZ();
 				break;
 			case 2:
 				std::cout << "cln" << std::endl;
-				this->regs.clearN();
+				regs->clearN();
 				break;
 			case 3:
 				std::cout << "clv" << std::endl;
-				this->regs.clearV();
+				regs->clearV();
 				break;
 			case 4:
 				std::cout << "cls" << std::endl;
-				this->regs.clearS();
+				regs->clearS();
 				break;
 			case 5:
 				std::cout << "clh" << std::endl;
-				this->regs.clearH();
+				regs->clearH();
 				break;
 			case 6:
 				std::cout << "clt" << std::endl;
-				this->regs.clearT();
+				regs->clearT();
 				break;
 			case 7:
 				std::cout << "cli" << std::endl;
-				this->regs.clearI();
+				regs->clearI();
 				break;
 	}
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
@@ -869,40 +874,40 @@ Avr::_bset(){
 	switch(s){
 			case 0:
 				std::cout << "sec" << std::endl;
-				this->regs.setC();
+				regs->setC();
 				break;
 			case 1:
 				std::cout << "sez" << std::endl;
-				this->regs.setZ();
+				regs->setZ();
 				break;
 			case 2:
 				std::cout << "sen" << std::endl;
-				this->regs.setN();
+				regs->setN();
 				break;
 			case 3:
 				std::cout << "sev" << std::endl;
-				this->regs.setV();
+				regs->setV();
 				break;
 			case 4:
 				std::cout << "ses" << std::endl;
-				this->regs.setS();
+				regs->setS();
 				break;
 			case 5:
 				std::cout << "seh" << std::endl;
-				this->regs.setH();
+				regs->setH();
 				break;
 			case 6:
 				std::cout << "set" << std::endl;
-				this->regs.setT();
+				regs->setT();
 				break;
 			case 7:
 				std::cout << "sei" << std::endl;
-				this->regs.setI();
+				regs->setI();
 				break;
 	}
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
@@ -913,104 +918,104 @@ Avr::_rjmp(){
 
 	// disassemble
 	if(K<0)
-		std::cout << "rjmp .-" << std::hex << (int)(K*-2) << "\t\t; 0x" << (int)((this->regs.pc + K + 1)*2) << std::dec << std::endl;
+		std::cout << "rjmp .-" << std::hex << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
 	else
-		std::cout << "rjmp .+" << std::hex << (int)(K*2) << "\t\t; 0x" << (int)((this->regs.pc + K + 1)*2) << std::dec << std::endl;
+		std::cout << "rjmp .+" << std::hex << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
 
-	this->regs.pc += K + 1;
-	this->cycles += 2;
+	regs->pc += K + 1;
+	clock += 2;
 }
 
 void
 Avr::_neg(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
-	uint8_t R = 0 - this->regs.r[Rd];
+	uint8_t R = 0 -(*regs)[Rd];
 	int n, v;
-	unsigned int Rd3 = getBit(this->regs.r[Rd], 3);
+	unsigned int Rd3 = getBit((*regs)[Rd], 3);
 	unsigned int R3 = getBit(R, 3);
 	unsigned int R7 = getBit(R, 7);
 	// check for the H flag
-	if(R3 | Rd3) this->regs.setH();
-	else this->regs.clearH();
+	if(R3 | Rd3) regs->setH();
+	else regs->clearH();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if(R == 0x80) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if(R == 0x80) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the C flag
-	if(R) this->regs.setC();
-	else this->regs.clearC();	
+	if(R) regs->setC();
+	else regs->clearC();	
 	// write back the result	
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "neg " << this->regs.getName(Rd) << std::endl;
+	std::cout << "neg " << regs->getName(Rd) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_inc(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
-	uint8_t R = this->regs.r[Rd] + 1;
+	uint8_t R =(*regs)[Rd] + 1;
 	int n, v;
 	unsigned int R7 = getBit(R, 7);
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if(R == 0x80) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if(R == 0x80) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// write back the result	
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "inc " << this->regs.getName(Rd) << std::endl;
+	std::cout << "inc " << regs->getName(Rd) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_dec(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
-	uint8_t R = this->regs.r[Rd] - 1;
+	uint8_t R =(*regs)[Rd] - 1;
 	int n, v;
 	unsigned int R7 = getBit(R, 7);
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if(R == 0x7f) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if(R == 0x7f) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// write back the result	
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "dec " << this->regs.getName(Rd) << std::endl;
+	std::cout << "dec " << regs->getName(Rd) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
@@ -1022,18 +1027,18 @@ Avr::_brbc(){
 
 	// disassemble
 	if(K<0)
-		std::cout << "brbc " << std::hex << (int)s << ", .-"  << (int)(K*-2) << "\t\t; 0x" << (int)((this->regs.pc + K + 1)*2) << std::dec << std::endl;
+		std::cout << "brbc " << std::hex << (int)s << ", .-"  << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
 	else
-		std::cout << "brbc " << std::hex << (int)s << ", .+"  << (int)(K*2) << "\t\t; 0x" << (int)((this->regs.pc + K + 1)*2) << std::dec << std::endl;
+		std::cout << "brbc " << std::hex << (int)s << ", .+"  << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
 
 
-	if(!getBit(this->regs.r[REG_SREG], s)){
-		this->regs.pc = this->regs.pc + 1 + K;
-		this->cycles += 2;
+	if(!getBit((*regs)[REG_SREG], s)){
+		regs->pc = regs->pc + 1 + K;
+		clock += 2;
 	}
 	else{
-		this->regs.pc += 1;
-		this->cycles += 1;
+		regs->pc += 1;
+		clock += 1;
 	}
 }
 
@@ -1046,244 +1051,246 @@ Avr::_brbs(){
 
 	// disassemble
 	if(K<0)
-		std::cout << "brbs " << std::hex << (int)s << ", .-"  << (int)(K*-2) << "\t\t; 0x" << (int)((this->regs.pc + K + 1)*2) << std::dec << std::endl;
+		std::cout << "brbs " << std::hex << (int)s << ", .-"  << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
 	else
-		std::cout << "brbs " << std::hex << (int)s << ", .+"  << (int)(K*2) << "\t\t; 0x" << (int)((this->regs.pc + K + 1)*2) << std::dec << std::endl;
+		std::cout << "brbs " << std::hex << (int)s << ", .+"  << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
 
-	if(getBit(this->regs.r[REG_SREG], s)){
-		this->regs.pc = this->regs.pc + 1 + K;
-		this->cycles += 2;
+	if(getBit((*regs)[REG_SREG], s)){
+		regs->pc = regs->pc + 1 + K;
+		clock += 2;
 	}
 	else{
-		this->regs.pc += 1;
-		this->cycles += 1;
+		regs->pc += 1;
+		clock += 1;
 	}
 }
 
 void
 Avr::_com(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
-	uint8_t R = 0xff - this->regs.r[Rd];
+	uint8_t R = 0xff -(*regs)[Rd];
 	int n, v;
 	unsigned int R7 = getBit(R, 7);
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	this->regs.clearV();
+	regs->clearV();
 	v=0;
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the C flag
-	this->regs.setC();
+	regs->setC();
 	// write back the result	
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "com " << this->regs.getName(Rd) << std::endl;
+	std::cout << "com " << regs->getName(Rd) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_cp(){
 	uint8_t Rr = ((opcode >> 5) & 0x10) | (opcode & 0xf);
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint8_t R = this->regs.r[Rd] - this->regs.r[Rr];
+	uint8_t R =(*regs)[Rd] -(*regs)[Rr];
 	int n, v;
-	unsigned int Rd3 = getBit(this->regs.r[Rd], 3);
-	unsigned int Rr3 = getBit(this->regs.r[Rr], 3);
+	unsigned int Rd3 = getBit((*regs)[Rd], 3);
+	unsigned int Rr3 = getBit((*regs)[Rr], 3);
 	unsigned int R3 = getBit(R, 3);
-	unsigned int Rd7 = getBit(this->regs.r[Rd], 7);
-	unsigned int Rr7 = getBit(this->regs.r[Rr], 7);
+	unsigned int Rd7 = getBit((*regs)[Rd], 7);
+	unsigned int Rr7 = getBit((*regs)[Rr], 7);
 	unsigned int R7 = getBit(R, 7);
 	// check for the H flag
-	if(((!Rd3)&Rr3) | (Rr3&R3) | (R3&(!Rd3))) this->regs.setH();
-	else this->regs.clearH();
+	if(((!Rd3)&Rr3) | (Rr3&R3) | (R3&(!Rd3))) regs->setH();
+	else regs->clearH();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if((Rd7&(!Rr7)&(!R7)) | ((!Rd7)&Rr7&R7)){this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if((Rd7&(!Rr7)&(!R7)) | ((!Rd7)&Rr7&R7)){regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the C flag
-	if(((!Rd7)&Rr7) | (Rr7&R7) | (R7&(!Rd7))) this->regs.setC();
-	else this->regs.clearC();
+	if(((!Rd7)&Rr7) | (Rr7&R7) | (R7&(!Rd7))) regs->setC();
+	else regs->clearC();
 	
 	// disassemble
-	std::cout << "cp " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "cp " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_cpc(){
 	uint8_t Rr = ((opcode >> 5) & 0x10) | (opcode & 0xf);
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint8_t R = this->regs.r[Rd] - this->regs.r[Rr];
-	if(this->regs.isC())
+	uint8_t R =(*regs)[Rd] -(*regs)[Rr];
+	if(regs->isC())
 		R -= 1;
 	int n, v;
-	unsigned int Rd3 = getBit(this->regs.r[Rd], 3);
-	unsigned int Rr3 = getBit(this->regs.r[Rr], 3);
+	unsigned int Rd3 = getBit((*regs)[Rd], 3);
+	unsigned int Rr3 = getBit((*regs)[Rr], 3);
 	unsigned int R3 = getBit(R, 3);
-	unsigned int Rd7 = getBit(this->regs.r[Rd], 7);
-	unsigned int Rr7 = getBit(this->regs.r[Rr], 7);
+	unsigned int Rd7 = getBit((*regs)[Rd], 7);
+	unsigned int Rr7 = getBit((*regs)[Rr], 7);
 	unsigned int R7 = getBit(R, 7);
 	// check for the H flag
-	if(((!Rd3)&Rr3) | (Rr3&R3) | (R3&(!Rd3))) this->regs.setH();
-	else this->regs.clearH();
+	if(((!Rd3)&Rr3) | (Rr3&R3) | (R3&(!Rd3))) regs->setH();
+	else regs->clearH();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if((Rd7&(!Rr7)&(!R7)) | ((!Rd7)&Rr7&R7)){this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if((Rd7&(!Rr7)&(!R7)) | ((!Rd7)&Rr7&R7)){regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if((!R)&(this->regs.isZ())) this->regs.setZ();
-	else this->regs.clearZ();
+	if((!R)&(regs->isZ())) regs->setZ();
+	else regs->clearZ();
 	// check for the C flag
-	if(((!Rd7)&Rr7) | (Rr7&R7) | (R7&(!Rd7))) this->regs.setC();
-	else this->regs.clearC();
+	if(((!Rd7)&Rr7) | (Rr7&R7) | (R7&(!Rd7))) regs->setC();
+	else regs->clearC();
 	
 	// disassemble
-	std::cout << "cpc " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "cpc " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 		
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_cpi(){
 	uint8_t Rd = ((opcode >> 4) & 0xf) + 16;
 	uint8_t K = (((opcode & 0xf00) >> 4) | (opcode & 0xf));
-	uint8_t R = this->regs.r[Rd] - K;
+	uint8_t R =(*regs)[Rd] - K;
 	int n, v;
-	unsigned int Rd3 = getBit(this->regs.r[Rd], 3);
+	unsigned int Rd3 = getBit((*regs)[Rd], 3);
 	unsigned int K3 = getBit(K, 3);
 	unsigned int R3 = getBit(R, 3);
-	unsigned int Rd7 = getBit(this->regs.r[Rd], 7);
+	unsigned int Rd7 = getBit((*regs)[Rd], 7);
 	unsigned int K7 = getBit(K, 7);
 	unsigned int R7 = getBit(R, 7);
 	// check for the H flag
-	if(((!Rd3)&K3) | (K3&R3) | (R3&(!Rd3))) this->regs.setH();
-	else this->regs.clearH();
+	if(((!Rd3)&K3) | (K3&R3) | (R3&(!Rd3))) regs->setH();
+	else regs->clearH();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if((Rd7&(!K7)&(!R7)) | ((!Rd7)&K7&R7)){this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if((Rd7&(!K7)&(!R7)) | ((!Rd7)&K7&R7)){regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the C flag
-	if(((!Rd7)&K7) | (K7&R7) | (R7&(!Rd7))) this->regs.setC();
-	else this->regs.clearC();
+	if(((!Rd7)&K7) | (K7&R7) | (R7&(!Rd7))) regs->setC();
+	else regs->clearC();
 	
 	// disassemble
-	std::cout << "cpi " << this->regs.getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	std::cout << "cpi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_lsr(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
-	uint8_t R = this->regs.r[Rd] >> 1;
+	uint8_t R =(*regs)[Rd] >> 1;
 	int n=0, c, v;
-	unsigned int Rd0 = getBit(this->regs.r[Rd], 0);
+	unsigned int Rd0 = getBit((*regs)[Rd], 0);
 	// check for the N flag
-	this->regs.clearN();
+	regs->clearN();
 	// check for the C flag
-	if(Rd0){this->regs.setC(); c=1;}
-	else{this->regs.clearC(); c=0;}
+	if(Rd0){regs->setC(); c=1;}
+	else{regs->clearC(); c=0;}
 	// check for the V flag
-	if(n^c){this->regs.setV(); v=1;}
-	else{this->regs.clearV(); v=0;}
+	if(n^c){regs->setV(); v=1;}
+	else{regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// write back the result	
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "lsr " << this->regs.getName(Rd) << std::endl;
+	std::cout << "lsr " << regs->getName(Rd) << std::endl;
 		
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_swap(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
-	uint8_t R = (this->regs.r[Rd] >> 4) | ((this->regs.r[Rd] & 0xf) << 4);
+	uint8_t R = ((*regs)[Rd] >> 4) | (((*regs)[Rd] & 0xf) << 4);
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "swap " << this->regs.getName(Rd) << std::endl;
+	std::cout << "swap " << regs->getName(Rd) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_push(){
 	uint8_t Rr = (opcode >> 4) & 0x1f;
-	uint16_t SP = ((this->regs.r[REG_SPH] << 8) | this->regs.r[REG_SPL]);
+	uint16_t SP = (((*regs)[REG_SPH] << 8) |(*regs)[REG_SPL]);
 	
-	this->sram[SP] = this->regs.r[Rr];
+	// (*sram)[SP] =(*regs)[Rr];
+	sram->write(SP, (*regs)[Rr]);
 	
 	SP -= 1;
-	this->regs.r[REG_SPH] = (uint8_t)(SP >> 8);
-	this->regs.r[REG_SPL] = (uint8_t)(SP);
+	(*regs)[REG_SPH] = (uint8_t)(SP >> 8);
+	(*regs)[REG_SPL] = (uint8_t)(SP);
 	
 	// disassemble
-	std::cout << "push " << this->regs.getName(Rr) << std::endl;
+	std::cout << "push " << regs->getName(Rr) << std::endl;
 		
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
 Avr::_pop(){
 	uint8_t Rr = (opcode >> 4) & 0x1f;
-	uint16_t SP = ((this->regs.r[REG_SPH] << 8) | this->regs.r[REG_SPL]);
+	uint16_t SP = (((*regs)[REG_SPH] << 8) |(*regs)[REG_SPL]);
 	
 	SP += 1;
-	this->regs.r[REG_SPH] = (uint8_t)(SP >> 8);
-	this->regs.r[REG_SPL] = (uint8_t)(SP);
+	(*regs)[REG_SPH] = (uint8_t)(SP >> 8);
+	(*regs)[REG_SPL] = (uint8_t)(SP);
 	
-	this->regs.r[Rr] = this->sram[SP];
+	// (*regs)[Rr] = (*sram)[SP];
+	(*regs)[Rr] = sram->read(SP);
 	
 	// disassemble
-	std::cout << "pop " << this->regs.getName(Rr) << std::endl;
+	std::cout << "pop " << regs->getName(Rr) << std::endl;
 		
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
@@ -1291,14 +1298,16 @@ Avr::_out(){
 	uint8_t Rr = (opcode >> 4) & 0x1f;
 	uint8_t A = (((opcode >> 5) & 0x30) | (opcode & 0xf)) + 0x20;
 
-	this->sram[A] = this->regs.r[Rr];
-	timer->outp(A - 0x20);
+	// (*sram)[A] = (*regs)[Rr];
+	sram->write(A, (*regs)[Rr]);
+
+	// timer->outp(A - 0x20);
 
 	// disassemble
-	std::cout << "out 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "out 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << ", " << regs->getName(Rr) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
@@ -1306,14 +1315,16 @@ Avr::_in(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
 	uint8_t A = (((opcode >> 5) & 0x30) | (opcode & 0xf)) + 0x20;
 
-	timer->inp(A - 0x20);
-	this->regs.r[Rd] = this->sram[A];
+	// timer->inp(A - 0x20);
+
+	// (*regs)[Rd] = (*sram)[A];
+	(*regs)[Rd] = sram->read(A);
 
 	// disassemble
-	std::cout << "in " << this->regs.getName(Rd) << ", 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << std::endl;
+	std::cout << "in " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
@@ -1322,333 +1333,359 @@ Avr::_rcall(){
 	if(K & 0x800) 
 			K = -1 * (((~K) + 1) & 0xfff);		// 2th complement
 
-	this->sram[this->regs.getSP()] = (uint8_t)(this->regs.pc + 1);
-	this->sram[this->regs.getSP()-1] = (uint8_t)((this->regs.pc + 1) >> 8);
+	// (*sram)[regs->getSP()] = (uint8_t)(regs->pc + 1);
+	sram->write(regs->getSP(), (uint8_t)(regs->pc + 1));
+	// (*sram)[regs->getSP()-1] = (uint8_t)((regs->pc + 1) >> 8);
+	sram->write(regs->getSP()-1, (uint8_t)((regs->pc + 1) >> 8));
 	
-	this->regs.setSP(this->regs.getSP()-2);
+	regs->setSP(regs->getSP()-2);
 	
 	// disassemble
 	if(K<0)
-		std::cout << "rcall .-" << std::hex << (int)(K*-2) << "\t\t; 0x" << (int)((this->regs.pc + K + 1)*2) << std::dec << std::endl;
+		std::cout << "rcall .-" << std::hex << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
 	else
-		std::cout << "rcall .+" << std::hex << (int)(K*2) << "\t\t; 0x" << (int)((this->regs.pc + K + 1)*2) << std::dec << std::endl;
+		std::cout << "rcall .+" << std::hex << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
 	
-	this->regs.pc += K + 1;
-	this->cycles += 3;
+	regs->pc += K + 1;
+	clock += 3;
 }
 
 void
 Avr::_ret(){
-	this->regs.setSP(this->regs.getSP()+2);
+	regs->setSP(regs->getSP()+2);
 
 	// disassemble
-	std::cout << "ret\t\t" << "; 0x" << ((int)((this->sram[this->regs.getSP()-1] << 8) | (this->sram[this->regs.getSP()])*2)) << std::endl;
+	// std::cout << "ret\t\t" << "; 0x" << ((int)(((*sram)[regs->getSP()-1] << 8) | ((*sram)[regs->getSP()])*2)) << std::endl;
+	std::cout << "ret\t\t" << "; 0x" << std::hex << ((int)((sram->read(regs->getSP()-1) << 8) | (sram->read(regs->getSP()))*2)) << std::dec << std::endl;
 	
-	this->regs.pc = (this->sram[this->regs.getSP()-1] << 8) | (this->sram[this->regs.getSP()]);
-	this->cycles += 4;
+	// regs->pc = ((*sram)[regs->getSP()-1] << 8) | ((*sram)[regs->getSP()]);
+	regs->pc = (sram->read(regs->getSP()-1) << 8) | (sram->read(regs->getSP()));
+	clock += 4;
 }
 
 void
 Avr::_ror(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
-	uint8_t R = this->regs.r[Rd] >> 1;
-	if(this->regs.isC())
+	uint8_t R =(*regs)[Rd] >> 1;
+	if(regs->isC())
 		R |= 0x80;
-	unsigned int Rd0 = getBit(this->regs.r[Rd], 0);
+	unsigned int Rd0 = getBit((*regs)[Rd], 0);
 	unsigned int R7 = getBit(R, 7);
 	unsigned int n, c, v;
 	// check for the C flag
-	if(Rd0) {this->regs.setC(); c=1;}
-	else {this->regs.clearC(); c=0;}
+	if(Rd0) {regs->setC(); c=1;}
+	else {regs->clearC(); c=0;}
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if(n^c) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if(n^c) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "ror " << this->regs.getName(Rd) << std::endl;
+	std::cout << "ror " << regs->getName(Rd) << std::endl;
 		
-	this->regs.pc += 1;	
-	this->cycles += 1;
+	regs->pc += 1;	
+	clock += 1;
 }
 
 void
 Avr::_sts(){
 	uint8_t Rr = ((opcode >> 4) & 0xf) + 16;
 	uint8_t K = ((opcode >> 4) & 0x7) | (opcode & 0xf);
-	this->sram[K] = this->regs.r[Rr];
+	// (*sram)[K] =(*regs)[Rr];
+	sram->write(K, (*regs)[Rr]);
 		
 	// disassemble
-	std::cout << "sts 0x" << std::hex << (unsigned int)(K) << std::dec << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "sts 0x" << std::hex << (unsigned int)(K) << std::dec << ", " << regs->getName(Rr) << std::endl;
 
-	this->regs.pc += 1;	
-	this->cycles += 1;
+	regs->pc += 1;	
+	clock += 1;
 }
 
 void
 Avr::_sts32(){
 	uint8_t Rr = ((opcode >> 4) & 0x1f);
-	uint16_t K = this->flash[this->regs.pc+1];
+	uint16_t K = this->flash[regs->pc+1];
 	if(K >= this->msize)
 		std::cout << "SRAM: ILLEGAL ADDRESS" << std::endl;
-	this->sram[K] = this->regs.r[Rr];
+	// (*sram)[K] =(*regs)[Rr];
+	sram->write(K, (*regs)[Rr]);
 
 	// disassemble
-	std::cout << "sts 0x" << std::hex << (unsigned int)(K) << std::dec << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "sts 0x" << std::hex << (unsigned int)(K) << std::dec << ", " << regs->getName(Rr) << std::endl;
 	
-	this->regs.pc += 2;	
-	this->cycles += 2;
+	regs->pc += 2;	
+	clock += 2;
 }
 
 void
 Avr::_lds(){
 	uint8_t Rd = ((opcode >> 4) & 0xf) + 16;
 	uint8_t K = ((opcode >> 4) & 0x7) | (opcode & 0xf);
-	this->regs.r[Rd] = this->sram[K];
+	// (*regs)[Rd] = (*sram)[K];
+	(*regs)[Rd] = sram->read(K);
 
 	// disassemble
-	std::cout << "lds " << this->regs.getName(Rd) << ", 0x" << std::hex << (unsigned int)(K) << std::dec << std::endl;
+	std::cout << "lds " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)(K) << std::dec << std::endl;
 
 		
-	this->regs.pc += 1;	
-	this->cycles += 1;
+	regs->pc += 1;	
+	clock += 1;
 }
 
 void
 Avr::_lds32(){
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint16_t K = this->flash[this->regs.pc+1];
+	uint16_t K = this->flash[regs->pc+1];
 	if(K >= this->msize)
 		std::cout << "SRAM: ILLEGAL ADDRESS" << std::endl;
-	this->regs.r[Rd] = this->sram[K];
+	// (*regs)[Rd] = (*sram)[K];
+	(*regs)[Rd] = sram->read(K);
 
 	// disassemble
-	std::cout << "lds " << this->regs.getName(Rd) << ", 0x" << std::hex << (unsigned int)(K) << std::dec << std::endl;
+	std::cout << "lds " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)(K) << std::dec << std::endl;
 
-	this->regs.pc += 2;	
-	this->cycles += 2;
+	regs->pc += 2;	
+	clock += 2;
 }
 
 void
 Avr::_stx(){
 	uint8_t Rr = ((opcode >> 4) & 0x1f);
-	uint16_t X = this->regs.getX();
+	uint16_t X = regs->getX();
 	char sign = ' ';			// Only used by disassembler
 	if((opcode & MSK_STX2) == OP_STX2){
-		this->sram[X] = this->regs.r[Rr];
+		// (*sram)[X] = (*regs)[Rr];
+		sram->write(X, (*regs)[Rr]);
 		++X;
 		sign = '+';
 	}
 	else if((opcode & MSK_STX3) == OP_STX3){
 		--X;
-		this->sram[X] = this->regs.r[Rr];
+		// (*sram)[X] =(*regs)[Rr];
+		sram->write(X, (*regs)[Rr]);
 		sign = '-';
 	}
 	else{
-		this->sram[X] = this->regs.r[Rr];
+		// (*sram)[X] =(*regs)[Rr];
+		sram->write(X, (*regs)[Rr]);
 	}
-	this->regs.setX(X);
+	regs->setX(X);
 	
 	// disassemble
 	if(sign == '+')
-		std::cout << "st x+, " << this->regs.getName(Rr) << std::endl;
+		std::cout << "st x+, " << regs->getName(Rr) << std::endl;
 	else if(sign == '-')
-		std::cout << "st -x, " << this->regs.getName(Rr) << std::endl;
+		std::cout << "st -x, " << regs->getName(Rr) << std::endl;
 	else
-		std::cout << "st x, " << this->regs.getName(Rr) << std::endl;
+		std::cout << "st x, " << regs->getName(Rr) << std::endl;
 
-	this->regs.pc += 1;	
-	this->cycles += 2;
+	regs->pc += 1;	
+	clock += 2;
 }
 
 void
 Avr::_sty(){
 	uint8_t Rr = ((opcode >> 4) & 0x1f);
-	uint16_t Y = this->regs.getY();
+	uint16_t Y = regs->getY();
 	uint16_t q = 0;
 	char sign = ' ';			// Only used by disassembler
 	if((opcode & MSK_STY2) == OP_STY2){
-		this->sram[Y] = this->regs.r[Rr];
+		// (*sram)[Y] =(*regs)[Rr];
+		sram->write(Y, (*regs)[Rr]);
 		++Y;
 		sign = '+';
 	}
 	else if((opcode & MSK_STY3) == OP_STY3){
 		--Y;
-		this->sram[Y] = this->regs.r[Rr];
+		// (*sram)[Y] =(*regs)[Rr];
+		sram->write(Y, (*regs)[Rr]);
 		sign = '-';
 	}
 	else{
 		q = ((opcode >> 8) & 0x20) | ((opcode >> 7) & 0x18) | (opcode & 0x7);
-		this->sram[Y+q] = this->regs.r[Rr];
+		// (*sram)[Y+q] =(*regs)[Rr];
+		sram->write(Y+q, (*regs)[Rr]);
 	}
-	this->regs.setY(Y);
+	regs->setY(Y);
 	
 	// disassemble
 	if(sign == '+')
-		std::cout << "st y+, " << this->regs.getName(Rr) << std::endl;
+		std::cout << "st y+, " << regs->getName(Rr) << std::endl;
 	else if(sign == '-')
-		std::cout << "st -y, " << this->regs.getName(Rr) << std::endl;
+		std::cout << "st -y, " << regs->getName(Rr) << std::endl;
 	else
 		if(q)
-			std::cout << "std y+" << (int)(q) << ", " << this->regs.getName(Rr) << std::endl;
+			std::cout << "std y+" << (int)(q) << ", " << regs->getName(Rr) << std::endl;
 		else
-			std::cout << "st y, " << this->regs.getName(Rr) << std::endl;
+			std::cout << "st y, " << regs->getName(Rr) << std::endl;
 
-	this->regs.pc += 1;	
-	this->cycles += 2;
+	regs->pc += 1;	
+	clock += 2;
 }
 
 void
 Avr::_stz(){
 	uint8_t Rr = ((opcode >> 4) & 0x1f);
-	uint16_t Z = this->regs.getZ();
+	uint16_t Z = regs->getZ();
 	uint16_t q = 0;
 	char sign = ' ';			// Only used by disassembler
 	if((opcode & MSK_STZ2) == OP_STZ2){
-		this->sram[Z] = this->regs.r[Rr];
+		// (*sram)[Z] =(*regs)[Rr];
+		sram->write(Z, (*regs)[Rr]);
 		++Z;
 		sign = '+';
 	}
 	else if((opcode & MSK_STZ3) == OP_STZ3){
 		--Z;
-		this->sram[Z] = this->regs.r[Rr];
+		// (*sram)[Z] =(*regs)[Rr];
+		sram->write(Z, (*regs)[Rr]);
 		sign = '-';
 	}
 	else{
 		q = ((opcode >> 8) & 0x20) | ((opcode >> 7) & 0x18) | (opcode & 0x7);
-		this->sram[Z+q] = this->regs.r[Rr];
+		// (*sram)[Z+q] =(*regs)[Rr];
+		sram->write(Z+q, (*regs)[Rr]);
 	}
-	this->regs.setZ(Z);
+	regs->setZ(Z);
 
 	// disassemble
 	if(sign == '+')
-		std::cout << "st z+, " << this->regs.getName(Rr) << std::endl;
+		std::cout << "st z+, " << regs->getName(Rr) << std::endl;
 	else if(sign == '-')
-		std::cout << "st -z, " << this->regs.getName(Rr) << std::endl;
+		std::cout << "st -z, " << regs->getName(Rr) << std::endl;
 	else
 		if(q)
-			std::cout << "std z+" << (int)(q) << ", " << this->regs.getName(Rr) << std::endl;
+			std::cout << "std z+" << (int)(q) << ", " << regs->getName(Rr) << std::endl;
 		else
-			std::cout << "st z, " << this->regs.getName(Rr) << std::endl;
+			std::cout << "st z, " << regs->getName(Rr) << std::endl;
 	
-	this->regs.pc += 1;	
-	this->cycles += 2;
+	regs->pc += 1;	
+	clock += 2;
 }
 
 void
 Avr::_ldx(){
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint16_t X = this->regs.getX();
+	uint16_t X = regs->getX();
 	char sign = ' ';
 	if((opcode & MSK_LDX2) == OP_LDX2){
-		this->regs.r[Rd] = this->sram[X];
+		// (*regs)[Rd] = (*sram)[X];
+		(*regs)[Rd] = sram->read(X);
 		++X;
 		sign = '+';
 	}
 	else if((opcode & MSK_LDX3) == OP_LDX3){
 		--X;
-		this->regs.r[Rd] = this->sram[X];
+		// (*regs)[Rd] = (*sram)[X];
+		(*regs)[Rd] = sram->read(X);
 		sign = '-';
 	}
 	else{
-		this->regs.r[Rd] = this->sram[X];
+		// (*regs)[Rd] = (*sram)[X];
+		(*regs)[Rd] = sram->read(X);
 	}
-	this->regs.setX(X);
+	regs->setX(X);
 	
 	// disassemble
 	if(sign == '+')
-		std::cout << "ld " << this->regs.getName(Rd) << ", x+" << std::endl;
+		std::cout << "ld " << regs->getName(Rd) << ", x+" << std::endl;
 	else if(sign == '-')
-		std::cout << "ld " << this->regs.getName(Rd) << ", -x" << std::endl;
+		std::cout << "ld " << regs->getName(Rd) << ", -x" << std::endl;
 	else
-		std::cout << "ld " << this->regs.getName(Rd) << ", x" << std::endl;
+		std::cout << "ld " << regs->getName(Rd) << ", x" << std::endl;
 
-	this->regs.pc += 1;	
-	this->cycles += 2;
+	regs->pc += 1;	
+	clock += 2;
 }
 
 void
 Avr::_ldy(){
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint16_t Y = this->regs.getY();
+	uint16_t Y = regs->getY();
 	uint16_t q = 0;
 	char sign = ' ';
 	if((opcode & MSK_LDY2) == OP_LDY2){
-		this->regs.r[Rd] = this->sram[Y];
+		// (*regs)[Rd] = (*sram)[Y];
+		(*regs)[Rd] = sram->read(Y);
 		++Y;
 		sign = '+';
 	}
 	else if((opcode & MSK_LDY3) == OP_LDY3){
 		--Y;
-		this->regs.r[Rd] = this->sram[Y];
+		// (*regs)[Rd] = (*sram)[Y];
+		(*regs)[Rd] = sram->read(Y);
 		sign = '-';
 	}
 	else{
 		q = ((opcode >> 8) & 0x20) | ((opcode >> 7) & 0x18) | (opcode & 0x7);
-		this->regs.r[Rd] = this->sram[Y+q];
+		// (*regs)[Rd] = (*sram)[Y+q];
+		(*regs)[Rd] = sram->read(Y+q);
 	}
-	this->regs.setY(Y);
+	regs->setY(Y);
 	
 	// disassemble
 	if(sign == '+')
-		std::cout << "ld " << this->regs.getName(Rd) << ", y+" << std::endl;
+		std::cout << "ld " << regs->getName(Rd) << ", y+" << std::endl;
 	else if(sign == '-')
-		std::cout << "ld " << this->regs.getName(Rd) << ", -y" << std::endl;
+		std::cout << "ld " << regs->getName(Rd) << ", -y" << std::endl;
 	else
 		if(q)
-			std::cout << "ldd " << this->regs.getName(Rd) << ", y+" << (int)(q) << std::endl;
+			std::cout << "ldd " << regs->getName(Rd) << ", y+" << (int)(q) << std::endl;
 		else
-			std::cout << "ld " << this->regs.getName(Rd) << ", y" << std::endl;
+			std::cout << "ld " << regs->getName(Rd) << ", y" << std::endl;
 	
-	this->regs.pc += 1;	
-	this->cycles += 2;
+	regs->pc += 1;	
+	clock += 2;
 }
 
 void
 Avr::_ldz(){
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint16_t Z = this->regs.getZ();
+	uint16_t Z = regs->getZ();
 	uint16_t q = 0;
 	char sign = ' ';
 	if((opcode & MSK_LDZ2) == OP_LDZ2){
-		this->regs.r[Rd] = this->sram[Z];
+		// (*regs)[Rd] = (*sram)[Z];
+		(*regs)[Rd] = sram->read(Z);
 		++Z;
 		sign = '+';
 	}
 	else if((opcode & MSK_LDZ3) == OP_LDZ3){
 		--Z;
-		this->regs.r[Rd] = this->sram[Z];
+		// (*regs)[Rd] = (*sram)[Z];
+		(*regs)[Rd] = sram->read(Z);
 		sign = '-';
 	}
 	else{
 		q = ((opcode >> 8) & 0x20) | ((opcode >> 7) & 0x18) | (opcode & 0x7);
-		this->regs.r[Rd] = this->sram[Z+q];
+		// (*regs)[Rd] = (*sram)[Z+q];
+		(*regs)[Rd] = sram->read(Z+q);
 	}
-	this->regs.setZ(Z);
+	regs->setZ(Z);
 
 	// disassemble
 	if(sign == '+')
-		std::cout << "ld " << this->regs.getName(Rd) << ", z+" << std::endl;
+		std::cout << "ld " << regs->getName(Rd) << ", z+" << std::endl;
 	else if(sign == '-')
-		std::cout << "ld " << this->regs.getName(Rd) << ", -z" << std::endl;
+		std::cout << "ld " << regs->getName(Rd) << ", -z" << std::endl;
 	else
 		if(q)
-			std::cout << "ldd " << this->regs.getName(Rd) << ", z+" << (int)(q) << std::endl;
+			std::cout << "ldd " << regs->getName(Rd) << ", z+" << (int)(q) << std::endl;
 		else
-			std::cout << "ld " << this->regs.getName(Rd) << ", z" << std::endl;
+			std::cout << "ld " << regs->getName(Rd) << ", z" << std::endl;
 	
-	this->regs.pc += 1;	
-	this->cycles += 2;
+	regs->pc += 1;	
+	clock += 2;
 }
 
 void
@@ -1657,103 +1694,105 @@ Avr::_break(){
 	
 	std::cout << "break" << std::endl;
 
-	this->regs.pc += 1;	
-	this->cycles += 1;
+	regs->pc += 1;	
+	clock += 1;
 }
 
 void
 Avr::_asr(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
-	uint8_t R = this->regs.r[Rd] >> 1;
-	if(getBit(this->regs.r[Rd], 7))
+	uint8_t R =(*regs)[Rd] >> 1;
+	if(getBit((*regs)[Rd], 7))
 		R |= 0x80;
-	unsigned int Rd0 = getBit(this->regs.r[Rd], 0);
+	unsigned int Rd0 = getBit((*regs)[Rd], 0);
 	unsigned int R7 = getBit(R, 7);
 	unsigned int n, c, v;
 	// check for the C flag
-	if(Rd0) {this->regs.setC(); c=1;}
-	else {this->regs.clearC(); c=0;}
+	if(Rd0) {regs->setC(); c=1;}
+	else {regs->clearC(); c=0;}
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if(n^c) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if(n^c) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "asr " << this->regs.getName(Rd) << std::endl;
+	std::cout << "asr " << regs->getName(Rd) << std::endl;
 
-	this->regs.pc += 1;	
-	this->cycles += 1;
+	regs->pc += 1;	
+	clock += 1;
 }
 
 void
 Avr::_bld(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
 	uint8_t b = opcode & 0x7;
-	uint8_t R = this->regs.r[Rd];
-	if(this->regs.isT())
+	uint8_t R =(*regs)[Rd];
+	if(regs->isT())
 		setBit(R, (int)b);
 	else
 		clearBit(R, (int)b);
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "bld " << this->regs.getName(Rd) << ", " << (int)(b) << std::endl;
+	std::cout << "bld " << regs->getName(Rd) << ", " << (int)(b) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_bst(){
 	uint8_t Rd = (opcode >> 4) & 0x1f;
 	uint8_t b = opcode & 0x7;
-	if(getBit(this->regs.r[Rd], (int)b))
-		this->regs.setT();
+	if(getBit((*regs)[Rd], (int)b))
+		regs->setT();
 	else
-		this->regs.clearT();
+		regs->clearT();
 
 	// disassemble
-	std::cout << "bst " << this->regs.getName(Rd) << ", " << (int)(b) << std::endl;
+	std::cout << "bst " << regs->getName(Rd) << ", " << (int)(b) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_cbi(){
 	uint8_t A = ((opcode >> 3) & 0x1f) + 0x20;
 	uint8_t b = opcode & 0x7;
-	clearBit(this->sram[A], b);
+	// clearBit((*sram)[A], b);
+	sram->clearBit(A, b);
 
 	// disassemble
 	std::cout << "cbi 0x" << std::hex << (int)(A-0x20) << std::dec << ", " << (int)(b) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
 Avr::_sbi(){
 	uint8_t A = ((opcode >> 3) & 0x1f) + 0x20;
 	uint8_t b = opcode & 0x7;
-	setBit(this->sram[A], b);
+	//setBit((*sram)[A], b);
+	sram->setBit(A, b);
 
 	// disassemble
 	std::cout << "sbi 0x" << std::hex << (int)(A-0x20) << std::dec << ", " << (int)(b) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
@@ -1762,20 +1801,20 @@ Avr::_cpse(){
 	uint8_t Rr = ((opcode >> 5) & 0x10) | (opcode & 0xf);
 	
 	// disassemble
-	std::cout << "cpse " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "cpse " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 
-	if(this->regs.r[Rd] == this->regs.r[Rr]){
-		uint16_t op2 = this->flash[this->regs.pc+1];
+	if((*regs)[Rd] ==(*regs)[Rr]){
+		uint16_t op2 = this->flash[regs->pc+1];
 		unsigned int c = 2;
 		if((op2 & MSK_CALL) == OP_CALL) ++c;
 		else if((op2 & MSK_JMP) == OP_JMP) ++c;
 		else if((op2 & MSK_LDS32) == OP_LDS32) ++c;
 		else if((op2 & MSK_STS32) == OP_STS32) ++c;
-		this->regs.pc += c;
-		this->cycles += c;
+		regs->pc += c;
+		clock += c;
 	}else{
-		this->regs.pc += 1;
-		this->cycles += 1;
+		regs->pc += 1;
+		clock += 1;
 	}
 }
 
@@ -1784,22 +1823,24 @@ Avr::_ijmp(){
 	// disassemble
 	std::cout << "ijmp" << std::endl;
 
-	this->regs.pc = this->regs.getZ();
-	this->cycles += 2;
+	regs->pc = regs->getZ();
+	clock += 2;
 }
 
 void
 Avr::_icall(){
-	this->sram[this->regs.getSP()] = (uint8_t)(this->regs.pc + 1);
-	this->sram[this->regs.getSP()-1] = (uint8_t)((this->regs.pc + 1) >> 8);
+	// (*sram)[regs->getSP()] = (uint8_t)(regs->pc + 1);
+	sram->write(regs->getSP(), (uint8_t)(regs->pc + 1));
+	// (*sram)[regs->getSP()-1] = (uint8_t)((regs->pc + 1) >> 8);
+	sram->write(regs->getSP()-1, (uint8_t)((regs->pc + 1) >> 8));
 	
-	this->regs.setSP(this->regs.getSP()-2);
+	regs->setSP(regs->getSP()-2);
 
 	// disassemble
 	std::cout << "icall" << std::endl;
 	
-	this->regs.pc = this->regs.getZ();
-	this->cycles += 3;
+	regs->pc = regs->getZ();
+	clock += 3;
 }
 
 void
@@ -1808,13 +1849,13 @@ Avr::_jmp(){
 	 * Only 16-bit address are supported!!!
 	 * ((opcode >> 3) & 0x3e) | (opcode & 0x1) not used
 	 **/
-	uint16_t K = this->flash[this->regs.pc+1];
+	uint16_t K = this->flash[regs->pc+1];
 
 	// disassemble
 	std::cout << "jmp 0x" << std::hex << (unsigned int)(K*2) << std::dec << std::endl;
 
-	this->regs.pc = K;
-	this->cycles += 3;
+	regs->pc = K;
+	clock += 3;
 }
 
 void
@@ -1823,203 +1864,207 @@ Avr::_call(){
 	 * Only 16-bit address are supported!!!
 	 * ((opcode >> 3) & 0x3e) | (opcode & 0x1) not used
 	 **/
-	uint16_t K = this->flash[this->regs.pc+1];
+	uint16_t K = this->flash[regs->pc+1];
 
-	this->sram[this->regs.getSP()] = (uint8_t)(this->regs.pc + 2);
-	this->sram[this->regs.getSP()-1] = (uint8_t)((this->regs.pc + 2) >> 8);
+	// (*sram)[regs->getSP()] = (uint8_t)(regs->pc + 2);
+	sram->write(regs->getSP(), (uint8_t)(regs->pc + 2));
+	// (*sram)[regs->getSP()-1] = (uint8_t)((regs->pc + 2) >> 8);
+	sram->write(regs->getSP()-1, (uint8_t)((regs->pc + 2) >> 8));
 	
-	this->regs.setSP(this->regs.getSP()-2);
+	regs->setSP(regs->getSP()-2);
 
 	// disassemble
 	std::cout << "call 0x" << std::hex << (unsigned int)(K*2) << std::dec << std::endl;
 	
-	this->regs.pc = K;
-	this->cycles += 4;
+	regs->pc = K;
+	clock += 4;
 }
 
 void
 Avr::_reti(){
-	this->regs.setSP(this->regs.getSP()+2);
-	this->regs.setI();
+	regs->setSP(regs->getSP()+2);
+	regs->setI();
 
 	// disassemble
-	std::cout << "reti\t\t" << "; 0x" << ((unsigned int)((this->sram[this->regs.getSP()-1] << 8) | (this->sram[this->regs.getSP()])*2)) << std::endl;
+	// std::cout << "reti\t\t" << "; 0x" << ((unsigned int)(((*sram)[regs->getSP()-1] << 8) | ((*sram)[regs->getSP()])*2)) << std::endl;
+	std::cout << "reti\t\t" << "; 0x" << ((unsigned int)((sram->read(regs->getSP()-1) << 8) | (sram->read(regs->getSP()))*2)) << std::endl;
 
-	this->regs.pc = (this->sram[this->regs.getSP()-1] << 8) | (this->sram[this->regs.getSP()]);	
-	this->cycles += 4;
+	// regs->pc = ((*sram)[regs->getSP()-1] << 8) | ((*sram)[regs->getSP()]);
+	regs->pc = (sram->read(regs->getSP()-1) << 8) | (sram->read(regs->getSP()));		
+	clock += 4;
 }
 
 void
 Avr::_mul(){
 	uint8_t Rr = ((opcode >> 5) & 0x10) | (opcode & 0xf);
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint16_t R = this->regs.r[Rd] * this->regs.r[Rr];
+	uint16_t R =(*regs)[Rd] *(*regs)[Rr];
 	// check for the C flag
 	unsigned int R15 = getBit(R, 15);
-	if(R15) this->regs.setC();
-	else this->regs.clearC();
+	if(R15) regs->setC();
+	else regs->clearC();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// write back the result
-	this->regs.r[REG_R0] = (uint8_t)(R);
-	this->regs.r[REG_R1] = (uint8_t)(R >> 8);
+	(*regs)[REG_R0] = (uint8_t)(R);
+	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 	
 	// disassemble
-	std::cout << "mul " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "mul " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
 Avr::_muls(){
 	uint8_t r = (opcode & 0xf) + 16;
 	uint8_t d = ((opcode >> 4) & 0xf) + 16;
-	int8_t Rr = this->regs.r[r];
-	int8_t Rd = this->regs.r[d];
+	int8_t Rr =(*regs)[r];
+	int8_t Rd =(*regs)[d];
 	int16_t extRd = (int16_t)Rd, extRr = (int16_t)Rr;
 	int16_t R = (uint16_t)(extRd * extRr);
 	// check for the C flag
 	unsigned int R15 = getBit((uint16_t)R, 15);
-	if(R15) this->regs.setC();
-	else this->regs.clearC();
+	if(R15) regs->setC();
+	else regs->clearC();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// write back the result
-	this->regs.r[REG_R0] = (uint8_t)(R);
-	this->regs.r[REG_R1] = (uint8_t)(R >> 8);
+	(*regs)[REG_R0] = (uint8_t)(R);
+	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 
 	// disassemble
-	std::cout << "muls " << this->regs.getName(d) << ", " << this->regs.getName(r) << std::endl;
+	std::cout << "muls " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
 Avr::_mulsu(){
 	uint8_t r = (opcode & 0x7) + 16;
 	uint8_t d = ((opcode >> 4) & 0x7) + 16;
-	int8_t Rr = this->regs.r[r];
-	int8_t Rd = this->regs.r[d];
+	int8_t Rr =(*regs)[r];
+	int8_t Rd =(*regs)[d];
 	int16_t extRd = (int16_t)Rd, extRr = (int16_t)Rr;
 	if(extRr & 0x8000)
 		extRr &= 0x00ff;
 	int16_t R = (uint16_t)(extRd * extRr);
 	// check for the C flag
 	unsigned int R15 = getBit((uint16_t)R, 15);
-	if(R15) this->regs.setC();
-	else this->regs.clearC();
+	if(R15) regs->setC();
+	else regs->clearC();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// write back the result
-	this->regs.r[REG_R0] = (uint8_t)(R);
-	this->regs.r[REG_R1] = (uint8_t)(R >> 8);
+	(*regs)[REG_R0] = (uint8_t)(R);
+	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 
 	// disassemble
-	std::cout << "mulsu " << this->regs.getName(d) << ", " << this->regs.getName(r) << std::endl;
+	std::cout << "mulsu " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
 Avr::_fmul(){
 	uint8_t r = (opcode & 0x7) + 16;
 	uint8_t d = ((opcode >> 4) & 0x7) + 16;
-	uint8_t Rr = this->regs.r[r];
-	uint8_t Rd = this->regs.r[d];
+	uint8_t Rr =(*regs)[r];
+	uint8_t Rd =(*regs)[d];
 	uint16_t R = Rd * Rr;
 	// check for the C flag
 	unsigned int R15 = getBit(R, 15);
-	if(R15) this->regs.setC();
-	else this->regs.clearC();
+	if(R15) regs->setC();
+	else regs->clearC();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// write back the result
 	R <<= 1;
-	this->regs.r[REG_R0] = (uint8_t)(R);
-	this->regs.r[REG_R1] = (uint8_t)(R >> 8);
+	(*regs)[REG_R0] = (uint8_t)(R);
+	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 	
 	// disassemble
-	std::cout << "fmul " << this->regs.getName(d) << ", " << this->regs.getName(r) << std::endl;
+	std::cout << "fmul " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
 Avr::_fmuls(){
 	uint8_t r = (opcode & 0x7) + 16;
 	uint8_t d = ((opcode >> 4) & 0x7) + 16;
-	int8_t Rr = this->regs.r[r];
-	int8_t Rd = this->regs.r[d];
+	int8_t Rr =(*regs)[r];
+	int8_t Rd =(*regs)[d];
 	int16_t extRd = (int16_t)Rd, extRr = (int16_t)Rr;
 	int16_t R = (uint16_t)(extRd * extRr);
 	// check for the C flag
 	unsigned int R15 = getBit((uint16_t)R, 15);
-	if(R15) this->regs.setC();
-	else this->regs.clearC();
+	if(R15) regs->setC();
+	else regs->clearC();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// write back the result
 	R <<= 1;
-	this->regs.r[REG_R0] = (uint8_t)(R);
-	this->regs.r[REG_R1] = (uint8_t)(R >> 8);
+	(*regs)[REG_R0] = (uint8_t)(R);
+	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 
 	// disassemble
-	std::cout << "fmuls " << this->regs.getName(d) << ", " << this->regs.getName(r) << std::endl;
+	std::cout << "fmuls " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
 Avr::_fmulsu(){
 	uint8_t r = (opcode & 0x7) + 16;
 	uint8_t d = ((opcode >> 4) & 0x7) + 16;
-	int8_t Rr = this->regs.r[r];
-	int8_t Rd = this->regs.r[d];
+	int8_t Rr =(*regs)[r];
+	int8_t Rd =(*regs)[d];
 	int16_t extRd = (int16_t)Rd, extRr = (int16_t)Rr;
 	if(extRr & 0x8000)
 		extRr &= 0x00ff;
 	int16_t R = (uint16_t)(extRd * extRr);
 	// check for the C flag
 	unsigned int R15 = getBit((uint16_t)R, 15);
-	if(R15) this->regs.setC();
-	else this->regs.clearC();
+	if(R15) regs->setC();
+	else regs->clearC();
 	// check for the Z flag
-	if(!R) this->regs.setZ();
-	else this->regs.clearZ();
+	if(!R) regs->setZ();
+	else regs->clearZ();
 	// write back the result
 	R <<= 1;
-	this->regs.r[REG_R0] = (uint8_t)(R);
-	this->regs.r[REG_R1] = (uint8_t)(R >> 8);
+	(*regs)[REG_R0] = (uint8_t)(R);
+	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 
 	// disassemble
-	std::cout << "fmulsu " << this->regs.getName(d) << ", " << this->regs.getName(r) << std::endl;
+	std::cout << "fmulsu " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 2;
+	regs->pc += 1;
+	clock += 2;
 }
 
 void
 Avr::_movw(){
 	uint8_t Rr = (opcode & 0xf) << 1;
 	uint8_t Rd = ((opcode >> 4) & 0xf) << 1;
-	this->regs.r[Rd] = this->regs.r[Rr];
-	this->regs.r[Rd+1] = this->regs.r[Rr+1];
+	(*regs)[Rd] =(*regs)[Rr];
+	(*regs)[Rd+1] =(*regs)[Rr+1];
 
 	// disassemble
-	std::cout << "movw " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "movw " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;	
+	regs->pc += 1;
+	clock += 1;	
 }
 
 void
@@ -2028,21 +2073,21 @@ Avr::_sbrc(){
 	uint8_t b = opcode & 0x7;
 
 	// disassemble
-	std::cout << "sbrc " << this->regs.getName(Rr) << ", " << (int)(b) << std::endl;
+	std::cout << "sbrc " << regs->getName(Rr) << ", " << (int)(b) << std::endl;
 
-	if(!getBit(this->regs.r[Rr], b)){
-		uint16_t op2 = this->flash[this->regs.pc+1];
+	if(!getBit((*regs)[Rr], b)){
+		uint16_t op2 = this->flash[regs->pc+1];
 		unsigned int c = 2;
 		if((op2 & MSK_CALL) == OP_CALL) ++c;
 		else if((op2 & MSK_JMP) == OP_JMP) ++c;
 		else if((op2 & MSK_LDS32) == OP_LDS32) ++c;
 		else if((op2 & MSK_STS32) == OP_STS32) ++c;
-		this->regs.pc += c;
-		this->cycles += c;
+		regs->pc += c;
+		clock += c;
 	}
 	else{
-		this->regs.pc += 1;
-		this->cycles += 1;
+		regs->pc += 1;
+		clock += 1;
 	}
 }
 
@@ -2052,21 +2097,21 @@ Avr::_sbrs(){
 	uint8_t b = opcode & 0x7;
 
 	// disassemble
-	std::cout << "sbrs " << this->regs.getName(Rr) << ", " << (int)(b) << std::endl;
+	std::cout << "sbrs " << regs->getName(Rr) << ", " << (int)(b) << std::endl;
 
-	if(getBit(this->regs.r[Rr], b)){
-		uint16_t op2 = this->flash[this->regs.pc+1];
+	if(getBit((*regs)[Rr], b)){
+		uint16_t op2 = this->flash[regs->pc+1];
 		unsigned int c = 2;
 		if((op2 & MSK_CALL) == OP_CALL) ++c;
 		else if((op2 & MSK_JMP) == OP_JMP) ++c;
 		else if((op2 & MSK_LDS32) == OP_LDS32) ++c;
 		else if((op2 & MSK_STS32) == OP_STS32) ++c;
-		this->regs.pc += c;
-		this->cycles += c;
+		regs->pc += c;
+		clock += c;
 	}
 	else{
-		this->regs.pc += 1;
-		this->cycles += 1;
+		regs->pc += 1;
+		clock += 1;
 	}
 }
 
@@ -2075,9 +2120,10 @@ Avr::_sleep(){
 	this->sleeping = true;
 
 	std::cout << "sleep" << std::endl;
+	std::cerr << "sleeping ..... ZZZzzzz" << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
@@ -2086,90 +2132,90 @@ Avr::_wdr(){
 
 	std::cout << "wdr" << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_sbci(){
 	uint8_t Rd = ((opcode >> 4) & 0xf) + 16;
 	uint8_t K = (((opcode >> 4) & 0xf0) | (opcode & 0xf));
-	uint8_t R = this->regs.r[Rd] - K;
-	if(this->regs.isC())
+	uint8_t R =(*regs)[Rd] - K;
+	if(regs->isC())
 		R -= 1;
 	int n, v;
-	unsigned int Rd3 = getBit(this->regs.r[Rd], 3);
+	unsigned int Rd3 = getBit((*regs)[Rd], 3);
 	unsigned int R3 = getBit(R, 3);
 	unsigned int K3 = getBit(K, 3);
-	unsigned int Rd7 = getBit(this->regs.r[Rd], 7);
+	unsigned int Rd7 = getBit((*regs)[Rd], 7);
 	unsigned int R7 = getBit(R, 7);
 	unsigned int K7 = getBit(K, 7);
 	// check for the H flag
-	if(((!Rd3)&K3) | (K3&R3) | (R3&(!Rd3))) this->regs.setH();
-	else this->regs.clearH();
+	if(((!Rd3)&K3) | (K3&R3) | (R3&(!Rd3))) regs->setH();
+	else regs->clearH();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if((Rd7&(!K7)&(!R7)) | ((!Rd7)&K7&R7)) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if((Rd7&(!K7)&(!R7)) | ((!Rd7)&K7&R7)) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(R) this->regs.clearZ();
+	if(R) regs->clearZ();
 	// check for the C flag
-	if(((!Rd7)&K7) | (K7&R7) | (R7&(!Rd7))) this->regs.setC();
-	else this->regs.clearC();
+	if(((!Rd7)&K7) | (K7&R7) | (R7&(!Rd7))) regs->setC();
+	else regs->clearC();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "sbci " << this->regs.getName(Rd) << ", 0x" << std::hex << (int)(K) << std::dec << std::endl;
+	std::cout << "sbci " << regs->getName(Rd) << ", 0x" << std::hex << (int)(K) << std::dec << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
 Avr::_sbc(){
 	uint8_t Rr = (((opcode >> 5) & 0x10) | (opcode & 0xf));
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
-	uint8_t R = this->regs.r[Rd] - this->regs.r[Rr];
-	if(this->regs.isC())
+	uint8_t R =(*regs)[Rd] -(*regs)[Rr];
+	if(regs->isC())
 		R -= 1;
 	int n, v;
-	unsigned int Rr3 = getBit(this->regs.r[Rr], 3);
-	unsigned int Rd3 = getBit(this->regs.r[Rd], 3);
+	unsigned int Rr3 = getBit((*regs)[Rr], 3);
+	unsigned int Rd3 = getBit((*regs)[Rd], 3);
 	unsigned int R3 = getBit(R, 3);
-	unsigned int Rr7 = getBit(this->regs.r[Rr], 7);
-	unsigned int Rd7 = getBit(this->regs.r[Rd], 7);
+	unsigned int Rr7 = getBit((*regs)[Rr], 7);
+	unsigned int Rd7 = getBit((*regs)[Rd], 7);
 	unsigned int R7 = getBit(R, 7);
 	// check for the H flag
-	if(((!Rd3)&Rr3) | (Rr3&R3) | (R3&(!Rd3))) this->regs.setH();
-	else this->regs.clearH();
+	if(((!Rd3)&Rr3) | (Rr3&R3) | (R3&(!Rd3))) regs->setH();
+	else regs->clearH();
 	// check for the N flag
-	if(R7) {this->regs.setN(); n=1;}
-	else {this->regs.clearN(); n=0;}
+	if(R7) {regs->setN(); n=1;}
+	else {regs->clearN(); n=0;}
 	// check for the V flag
-	if((Rd7&(!Rr7)&(!R7)) | ((!Rd7)&Rr7&R7)) {this->regs.setV(); v=1;}
-	else {this->regs.clearV(); v=0;}
+	if((Rd7&(!Rr7)&(!R7)) | ((!Rd7)&Rr7&R7)) {regs->setV(); v=1;}
+	else {regs->clearV(); v=0;}
 	// check for the S flag
-	if(n^v) this->regs.setS();
-	else this->regs.clearS();
+	if(n^v) regs->setS();
+	else regs->clearS();
 	// check for the Z flag
-	if(R) this->regs.clearZ();
+	if(R) regs->clearZ();
 	// check for the C flag
-	if(((!Rd7)&Rr7) | (Rr7&R7) | (R7&(!Rd7))) this->regs.setC();
-	else this->regs.clearC();
+	if(((!Rd7)&Rr7) | (Rr7&R7) | (R7&(!Rd7))) regs->setC();
+	else regs->clearC();
 	// write back the result
-	this->regs.r[Rd] = R;
+	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "sbc " << this->regs.getName(Rd) << ", " << this->regs.getName(Rr) << std::endl;
+	std::cout << "sbc " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
-	this->regs.pc += 1;
-	this->cycles += 1;
+	regs->pc += 1;
+	clock += 1;
 }
 
 void
@@ -2180,19 +2226,20 @@ Avr::_sbic(){
 	// disassemble
 	std::cout << "sbic 0x" << (int)(A-0x20) << ", " << (int)(b) << std::endl;
 
-	if(!getBit(this->sram[A], b)){
-		uint16_t op2 = this->flash[this->regs.pc+1];
+	// if(!getBit((*sram)[A], b)){
+	if(!sram->getBit(A, b)){
+		uint16_t op2 = this->flash[regs->pc+1];
 		unsigned int c = 2;
 		if((op2 & MSK_CALL) == OP_CALL) ++c;
 		else if((op2 & MSK_JMP) == OP_JMP) ++c;
 		else if((op2 & MSK_LDS32) == OP_LDS32) ++c;
 		else if((op2 & MSK_STS32) == OP_STS32) ++c;
-		this->regs.pc += c;
-		this->cycles += c;
+		regs->pc += c;
+		clock += c;
 	}
 	else{
-		this->regs.pc += 1;
-		this->cycles += 1;
+		regs->pc += 1;
+		clock += 1;
 	}
 }
 
@@ -2204,136 +2251,153 @@ Avr::_sbis(){
 	// disassemble
 	std::cout << "sbis 0x" << (int)(A-0x20) << ", " << (int)(b) << std::endl;
 
-	if(getBit(this->sram[A], b)){
-		uint16_t op2 = this->flash[this->regs.pc+1];
+	// if(getBit((*sram)[A], b)){
+	if(sram->getBit(A, b)){
+		uint16_t op2 = this->flash[regs->pc+1];
 		unsigned int c = 2;
 		if((op2 & MSK_CALL) == OP_CALL) ++c;
 		else if((op2 & MSK_JMP) == OP_JMP) ++c;
 		else if((op2 & MSK_LDS32) == OP_LDS32) ++c;
 		else if((op2 & MSK_STS32) == OP_STS32) ++c;
-		this->regs.pc += c;
-		this->cycles += c;
+		regs->pc += c;
+		clock += c;
 	}
 	else{
-		this->regs.pc += 1;
-		this->cycles += 1;
+		regs->pc += 1;
+		clock += 1;
 	}
 }
 
 void
 Avr::_lpm(){
-	uint16_t Z = this->regs.getZ() >> 1;
+	uint16_t Z = regs->getZ() >> 1;
 	uint16_t word = this->flash[Z];
 	uint8_t byte;
 	std::string param;
 	// High or Low byte ?
-	if(this->regs.getZ() & 0x1)	// High
+	if(regs->getZ() & 0x1)	// High
 		byte = word >> 8;
-	else						// Low
+	else				// Low
 		byte = word & 0xff;
 	if((this->opcode & MSK_LPM1) == OP_LPM1){
-		this->regs.r[REG_R0] = byte;
+		(*regs)[REG_R0] = byte;
 		param = "";
 	}
 	else if((this->opcode & MSK_LPM2) == OP_LPM2){
 		uint8_t Rd = (opcode >> 4) & 0x1f;
-		this->regs.r[Rd] = byte;
-		param = " " + this->regs.getName(Rd) + ", z";
+		(*regs)[Rd] = byte;
+		param = " " + regs->getName(Rd) + ", z";
 	}
 	else if((this->opcode & MSK_LPM3) == OP_LPM3){
 		uint8_t Rd = (opcode >> 4) & 0x1f;
-		this->regs.r[Rd] = byte;
-		this->regs.setZ(this->regs.getZ()+1);
-		param = " " + this->regs.getName(Rd) + ", z+";
+		(*regs)[Rd] = byte;
+		regs->setZ(regs->getZ()+1);
+		param = " " + regs->getName(Rd) + ", z+";
 	}
 
 	// disassemble
 	std::cout << "lpm" + param << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 3;
+	regs->pc += 1;
+	clock += 3;
 }
 
 void
 Avr::_elpm(){
-	uint32_t ZZ = (this->regs.r[REG_RAMPZ] << 16) | this->regs.getZ();
+	uint32_t ZZ = ((*regs)[REG_RAMPZ] << 16) | regs->getZ();
 	uint32_t ZZZ = ZZ >> 1;
 	uint16_t word = this->flash[ZZZ];
 	uint8_t byte;
 	std::string param;
 	// High or Low byte ?
-	if(this->regs.getZ() & 0x1)	// High
+	if(regs->getZ() & 0x1)	// High
 		byte = word >> 8;
 	else				// Low
 		byte = word & 0xff;
 	if((this->opcode & MSK_ELPM1) == OP_ELPM1){
-		this->regs.r[REG_R0] = byte;
+		(*regs)[REG_R0] = byte;
 		param = "";
 	}
 	else if((this->opcode & MSK_ELPM2) == OP_ELPM2){
 		uint8_t Rd = (opcode >> 4) & 0x1f;
-		this->regs.r[Rd] = byte;
-		param = " " + this->regs.getName(Rd) + ", z";
+		(*regs)[Rd] = byte;
+		param = " " + regs->getName(Rd) + ", z";
 	}
 	else if((this->opcode & MSK_ELPM3) == OP_ELPM3){
 		uint8_t Rd = (opcode >> 4) & 0x1f;
-		this->regs.r[Rd] = byte;
+		(*regs)[Rd] = byte;
 		++ZZ;
-		this->regs.setZ((uint16_t)ZZ);
-		this->regs.r[REG_RAMPZ] = (uint8_t)(ZZ >> 16);
-		param = " " + this->regs.getName(Rd) + ", z+";
+		regs->setZ((uint16_t)ZZ);
+		(*regs)[REG_RAMPZ] = (uint8_t)(ZZ >> 16);
+		param = " " + regs->getName(Rd) + ", z+";
 	}
 
 	// disassemble
 	std::cout << "elpm" + param << std::endl;
 
-	this->regs.pc += 1;
-	this->cycles += 3;
+	regs->pc += 1;
+	clock += 3;
 }
 
 void
 Avr::dumpRegs()
 {
-	this->regs.dump();	
+	regs->dump();	
+}
+
+
+void
+Avr::addInternalDevice(InternalDevice *d)
+{
+	this->intrn_devices.push_back(d);
 }
 
 void
-Avr::addDevice(Device *d)
+Avr::addIOListener(uint8_t ioport, InternalDevice *d)
 {
-	this->devices.push_back(d);
+	sram->addIOListener(ioport, d);
+}
+
+void
+Avr::addClockEvent(Event *e)
+{
+	clock.addEvent(e);
 }
 
 void
 Avr::awake()
 {
-	if(this->sleeping){
+	if(sleeping){
 		sleeping = false;
-		this->cycles += 4;
+		clock += 4;
 	}
 }
 
 void
 Avr::fireInterrupt(uint8_t intr)
 {
-	if(this->regs.isI()){
-		//std::cerr << "Interrupt [" << (int)intr << "]" << std::endl;
+	std::cerr << "Interrupt TRY [" << (int)intr << "] @ " << clock.getCycles() << " PC=" << std::hex << regs->pc*2 << std::dec << std::endl;
+	//interrupts.push(intr);
+	if(regs->isI()){
+		std::cerr << "Interrupt [" << (int)intr << "] @ " << clock.getCycles() << " PC=" <<  std::hex << regs->pc*2 << std::dec << std::endl;
 		awake();
-		//std::cout << std::endl;
-		nextInterrupt = intr;
+		interrupts.push(intr);
 	}
 }
 
 void
 Avr::interrupt(uint8_t intr)
 {
-	this->sram[this->regs.getSP()] = (uint8_t)(this->regs.pc);
-	this->sram[this->regs.getSP()-1] = (uint8_t)((this->regs.pc) >> 8);
+	// (*sram)[regs->getSP()] = (uint8_t)(regs->pc);
+	sram->write(regs->getSP(), (uint8_t)(regs->pc));
+	// (*sram)[regs->getSP()-1] = (uint8_t)((regs->pc) >> 8);
+	sram->write(regs->getSP()-1, (uint8_t)((regs->pc) >> 8));
 	
-	this->regs.setSP(this->regs.getSP()-2);
-	this->regs.clearI();
+	regs->setSP(regs->getSP()-2);
+	regs->clearI();
 
-	this->regs.pc = intr * 2;
-	this->regs.oldpc = this->regs.pc;
-	this->cycles += 3;		/* for compatibility with AVR Studio */
+	regs->pc = intr * 2;
+	regs->oldpc = regs->pc;
+	clock += 3;		/* for compatibility with AVR Studio */
 }
 

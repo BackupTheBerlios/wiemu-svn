@@ -17,15 +17,12 @@
 **/
 
 #include <stdint.h>
+#include "../../include/clock.hh"
 #include "timer.hh"
 #include "avr.hh"
 #include <iostream>
 
 Timer::Timer(){
-
-}
-
-Timer::Timer(Avr *avr){
 	this->avr = avr;
 	overflow = false;
 	assr = 0;
@@ -53,92 +50,100 @@ Timer::Timer(Avr *avr){
 Timer::~Timer(){}
 
 void
-Timer::setMem(uint8_t *mem){
-	this->mem = mem;
+Timer::setMCU(Mcu *mcu){
+	avr = (Avr*)mcu;
+	avr->addIOListener(TCNT0, this);
+	avr->addIOListener(TCCR0, this);
+	avr->addIOListener(OCR0, this);
+	avr->addIOListener(ASSR, this);
+	avr->addIOListener(TCNT1L, this);
+	avr->addIOListener(TCNT1H, this);
+	avr->addIOListener(TCCR1B, this);
+	//avr->addIOListener(OCR1A, this);
+	//avr->addIOListener(OCR1B, this);
+	avr->addIOListener(TIMSK, this);
+	avr->addIOListener(TIFR, this);
 }
 
 void
-Timer::setFlash(uint16_t *flash){
-	this->flash = flash;
+Timer::probeIO(uint8_t port, uint8_t verb){
+	switch(verb){
+		case DEV_IO_READ:
+			if(port == TCNT0){
+				(*(avr->sram))[TCNT0 + AVR_IO_BASE] = tcnt0;
+			}
+			else if(port == TCCR0){
+				(*(avr->sram))[TCCR0 + AVR_IO_BASE] = tccr0;
+			}
+			else if(port == OCR0){
+				(*(avr->sram))[OCR0 + AVR_IO_BASE] = ocr0;
+			}
+			else if(port == ASSR){
+				(*(avr->sram))[ASSR + AVR_IO_BASE] = assr;
+			}
+			else if(port == TCNT1L){
+				(*(avr->sram))[TCNT1L + AVR_IO_BASE] = (uint8_t)(tcnt1);
+				temp1 = (uint8_t)(tcnt1 >> 8);			// Copy TCNTL1H to TEMP Reg
+			}
+			else if(port == TCNT1H){
+				(*(avr->sram))[TCNT1H + AVR_IO_BASE] = temp1;
+			}
+			else if(port == TCCR1B){
+				(*(avr->sram))[TCCR1B + AVR_IO_BASE] = tccr1b;
+			}
+			//else if(port == OCR1A){
+			//	(*(avr->sram))[OCR1A + AVR_IO_BASE] = ocr1a;
+			//}
+			//else if(port == OCR1B){
+			//	(*(avr->sram))[OCR1B + AVR_IO_BASE] = ocr1b;
+			//}
+			else if(port == TIMSK){
+				(*(avr->sram))[TIMSK + AVR_IO_BASE] = timsk;
+			}
+			else if(port == TIFR){
+				(*(avr->sram))[TIFR + AVR_IO_BASE] = tifr;
+			}
+			break;
+		case DEV_IO_WRITE:
+			if(port == TCNT0)
+				setTCNT0();
+			else if(port == TCCR0)
+				setTCCR0();
+			else if(port == ASSR)
+				setASSR();
+			else if(port == TCCR1B)
+				setTCCR1B();
+			else if(port == OCR0)
+				setOCR0();
+			else if(port == TCNT1L)
+				setTCNT1L();
+			else if(port == TCNT1H)
+				setTCNT1H();
+			//else if(port == OCR1A)
+			//	setOCR1A();
+			//else if(port == OCR1B)
+			//	setOCR1B();
+			else if(port == TIMSK)
+				setTIMSK();
+			else if(port == TIFR)
+				setTIFR();
+			break;
+	}
 }
 
 void
-Timer::inp(uint8_t port){
-	if(port == TCNT0){
-		mem[TCNT0 + AVR_IO_BASE] = tcnt0;
-	}
-	else if(port == TCCR0){
-		mem[TCCR0 + AVR_IO_BASE] = tccr0;
-	}
-	else if(port == OCR0){
-		mem[OCR0 + AVR_IO_BASE] = ocr0;
-	}
-	else if(port == ASSR){
-		mem[ASSR + AVR_IO_BASE] = assr;
-	}
-	else if(port == TCNT1L){
-		mem[TCNT1L + AVR_IO_BASE] = (uint8_t)(tcnt1);
-		temp1 = (uint8_t)(tcnt1 >> 8);			// Copy TCNTL1H to TEMP Reg
-	}
-	else if(port == TCNT1H){
-		mem[TCNT1H + AVR_IO_BASE] = temp1;
-	}
-	else if(port == TCCR1B){
-		mem[TCCR1B + AVR_IO_BASE] = tccr1b;
-	}
-	//else if(port == OCR1A){
-	//	mem[OCR1A + AVR_IO_BASE] = ocr1a;
-	//}
-	//else if(port == OCR1B){
-	//	mem[OCR1B + AVR_IO_BASE] = ocr1b;
-	//}
-	else if(port == TIMSK){
-		mem[TIMSK + AVR_IO_BASE] = timsk;
-	}
-	else if(port == TIFR){
-		mem[TIFR + AVR_IO_BASE] = tifr;
-	}
-}
-
-void
-Timer::outp(uint8_t port){
-	if(port == TCNT0)
-		setTCNT0();
-	else if(port == TCCR0)
-		setTCCR0();
-	else if(port == ASSR)
-		setASSR();
-	else if(port == TCCR1B)
-		setTCCR1B();
-	else if(port == OCR0)
-		setOCR0();
-	else if(port == TCNT1L)
-		setTCNT1L();
-	else if(port == TCNT1H)
-		setTCNT1H();
-	//else if(port == OCR1A)
-	//	setOCR1A();
-	//else if(port == OCR1B)
-	//	setOCR1B();
-	else if(port == TIMSK)
-		setTIMSK();
-	else if(port == TIFR)
-		setTIFR();
-}
-
-void
-Timer::update(uint64_t c){
+Timer::update(Clock c){
 	// Increment the overall ticks by the elapsed
 	// clock cycles in the last instruction
 	if(t0_run){
-		for(uint64_t i=0 ; i<c ; i++){
+		for(uint64_t i=0 ; i<c.getCycles() ; i++){
 			ticks0++;
 			if(t0_initialized && t0_cs)
 				updateTimer0();
 		}
 	}
 	if(t1_run){
-		for(uint64_t i=0 ; i<c ; i++){
+		for(uint64_t i=0 ; i<c.getCycles() ; i++){
 			ticks1++;
 			if(t1_initialized && t1_cs)
 				updateTimer1();
@@ -148,7 +153,7 @@ Timer::update(uint64_t c){
 
 void
 Timer::setASSR(){
-	assr = mem[ASSR + AVR_IO_BASE];
+	assr = (*(avr->sram))[ASSR + AVR_IO_BASE];
 	if(assr & (1 << AS0)){
 		async0 = true;
 	}else{
@@ -158,22 +163,22 @@ Timer::setASSR(){
 
 void
 Timer::setTIMSK(){
-	timsk = mem[TIMSK + AVR_IO_BASE];
+	timsk = (*(avr->sram))[TIMSK + AVR_IO_BASE];
 }
 
 void
 Timer::setTIFR(){
-	tifr = mem[TIFR + AVR_IO_BASE];
+	tifr = (*(avr->sram))[TIFR + AVR_IO_BASE];
 	// Some flags are cleared by writting one into them
 	if(tifr & (1 << OCF0))
 		tifr &= ~(1 << OCF0);		// Clear OCF0
 	if(tifr & (1 << TOV0))
-		tifr &= ~(1 << TOV0);		// Clear OCF0
+		tifr &= ~(1 << TOV0);		// Clear TOV0
 }
 
 void
 Timer::setTCCR0(){
-	tccr0 = mem[TCCR0 + AVR_IO_BASE];
+	tccr0 = (*(avr->sram))[TCCR0 + AVR_IO_BASE];
 	// clock select (CS)
 	uint8_t cs = tccr0 & 0x7;
 	switch(cs){
@@ -221,14 +226,14 @@ Timer::setTCCR0(){
 
 void
 Timer::setTCNT0(){
-	tcnt0 = mem[TCNT0 + AVR_IO_BASE];
+	tcnt0 = (*(avr->sram))[TCNT0 + AVR_IO_BASE];
 	ticks0 = 0;						 // Reset Timer0
 	t0_run = true;
 }
 
 void
 Timer::setOCR0(){
-	ocr0 = mem[OCR0 + AVR_IO_BASE];
+	ocr0 = (*(avr->sram))[OCR0 + AVR_IO_BASE];
 }
 
 void
@@ -244,6 +249,7 @@ Timer::updateTimer0(){
 	if(tcnt0_prev != tcnt0){
 		// Check for Overflow
 		if(tcnt0 == 0){
+			std::cerr << "OPS OVF......" << std::endl;
 			tifr |= (1 << TOV0);
 		}
 		// Compare Match
@@ -272,7 +278,7 @@ Timer::updateTimer0(){
 
 void
 Timer::setTCCR1B(){
-	tccr1b = mem[TCCR1B + AVR_IO_BASE];
+	tccr1b = (*(avr->sram))[TCCR1B + AVR_IO_BASE];
 	// clock select (CS)
 	uint8_t cs = tccr1b & 0x7;
 	switch(cs){
@@ -317,8 +323,8 @@ Timer::setTCNT1L(){
 
 void
 Timer::setTCNT1H(){
-	tcnt1 = (tcnt1 & 0x00ff) | (mem[TCNT1H + AVR_IO_BASE] << 8);
-	temp1 = mem[TCNT1L + AVR_IO_BASE];
+	tcnt1 = (tcnt1 & 0x00ff) | ((*(avr->sram))[TCNT1H + AVR_IO_BASE] << 8);
+	temp1 = (*(avr->sram))[TCNT1L + AVR_IO_BASE];
 	ticks1 = 0;						 // Reset Timer1
 	t1_run = true;
 }

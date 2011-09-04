@@ -20,6 +20,7 @@
 #define MICA2_HH
 
 #include "../../arch/avr/avr.hh"
+#include "../../include/clock.hh"
 #include "leds.hh"
 #include "cc1000.hh"
 
@@ -30,7 +31,7 @@ public:
 	void load(std::string);
 	void run();
 	void step();
-	unsigned int getCycles();
+	uint64_t getCycles();
 	void display();
 private:
 	Avr mcu;

@@ -19,6 +19,8 @@
 #ifndef TIMER_HH
 #define TIMER_HH
 
+#include "../../include/internaldevice.hh"
+
 #define		AVR_IO_BASE	0x20
 
 /**
@@ -102,22 +104,18 @@
 
 class Avr;
 
-class Timer{
+class Timer: InternalDevice{
 public:
 	Timer();
-	Timer(Avr *);
 	~Timer();
-	void setMem(uint8_t *);
-	void setFlash(uint16_t *);
-	void inp(uint8_t);
-	void outp(uint8_t);
-	void update(uint64_t);
+	void setMCU(Mcu *);
+	void probeIO(uint8_t, uint8_t);
+	void update(Clock);
 	bool overflow;
 	int getTCNT0();
 private:
 	Avr *avr;
 
-	uint8_t *mem;
 	uint16_t *flash;
 
 	uint8_t timsk;						// Timer Interrupt Mask

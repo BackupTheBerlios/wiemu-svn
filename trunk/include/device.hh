@@ -20,10 +20,13 @@
 #define DEVICE_HH
 
 #include <stdint.h>
+#include "mcu"
+
+class Mcu;
 
 class Device{
 public:
-	virtual void probe(uint64_t) = 0;
+	virtual void setMCU(Mcu *) = 0;
 };
 
 #endif

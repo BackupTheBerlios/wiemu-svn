@@ -152,8 +152,8 @@ Avr::writePins()
 void
 Avr::writePin(uint16_t DDR, uint16_t IN, uint16_t OUT, uint16_t PIN, uint8_t b)
 {
-	if(getBit(this->sram[AVR_IO_START+DDR], b)){	// Is Output?
-		if(getBit(this->sram[AVR_IO_START+OUT], b))
+	if(getBit((*sram)[AVR_IO_START+DDR], b)){	// Is Output?
+		if(getBit((*sram)[AVR_IO_START+OUT], b))
 			pins[PIN].set();
 		else
 			pins[PIN].clear();
@@ -204,20 +204,20 @@ Avr::readPins()
 void
 Avr::readPin(uint16_t DDR, uint16_t IN, uint16_t OUT, uint16_t PIN, uint8_t b)
 {
-	if(!getBit(this->sram[AVR_IO_START+DDR], b)){	// Is Input?
+	if(!getBit((*sram)[AVR_IO_START+DDR], b)){	// Is Input?
 		if(pins[PIN].get())
-			setBit(this->sram[AVR_IO_START+IN], b);
+			setBit((*sram)[AVR_IO_START+IN], b);
 		else
-			clearBit(this->sram[AVR_IO_START+IN], b);
+			clearBit((*sram)[AVR_IO_START+IN], b);
 	}
 }
 
 void
 Avr::printPins()
 {
-	std::cout << "(DDRA)0x1a=" << (int)this->sram[AVR_IOREG_DDRA + AVR_IO_START] << std::endl;
-	std::cout << "(PORTA)0x1b=" << (int)this->sram[AVR_IOREG_PORTA + AVR_IO_START] << std::endl;
-	std::cout << "(PINA)0x19=" << (int)this->sram[AVR_IOREG_PINA + AVR_IO_START] << std::endl;
+	std::cout << "(DDRA)0x1a=" << (int)(*sram)[AVR_IOREG_DDRA + AVR_IO_START] << std::endl;
+	std::cout << "(PORTA)0x1b=" << (int)(*sram)[AVR_IOREG_PORTA + AVR_IO_START] << std::endl;
+	std::cout << "(PINA)0x19=" << (int)(*sram)[AVR_IOREG_PINA + AVR_IO_START] << std::endl;
 	std::cout << pins[AVR_PIN_PA0].getName() + "=" << pins[AVR_PIN_PA0].get() << std::endl;
 	std::cout << "PA1=" << (pins[AVR_PIN_PA1].get()) << std::endl;
 	std::cout << "PA2=" << (pins[AVR_PIN_PA2].get()) << std::endl;

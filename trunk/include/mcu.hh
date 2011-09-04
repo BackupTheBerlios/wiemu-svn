@@ -19,11 +19,19 @@
 #ifndef MCU_HH
 #define MCU_HH
 
+#include "internaldevice.hh"
+#include "device.hh"
+#include "clock.hh"
+
 class Mcu{
+private:
+	virtual void addInternalDevice(InternalDevice *) = 0;
 public:
-	void step(void);
-	void run(void);
-	unsigned int getCycles(void);
+	virtual void step(void) = 0;
+	virtual void run(void) = 0;
+	virtual uint64_t getCycles(void) = 0;
+	virtual Clock getClock(void) = 0;
+	virtual void addClockEvent(Event *) = 0;
 };
 
 #endif

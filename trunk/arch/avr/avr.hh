@@ -20,12 +20,19 @@
 #define AVR_HH
 
 #include "../../include/mcu.hh"
+#include "../../include/clock.hh"
 #include "../../include/firmware.hh"
 #include "../../include/device.hh"
+#include "../../include/internaldevice.hh"
+#include "mem.hh"
 #include "regs.hh"
 #include "pins.hh"
 #include "timer.hh"
+#include "spi.hh"
 #include <vector>
+#include <queue>
+
+#define	AVR_FREQ	7372800 	// ~7MB
 
 #define MSK_ADC		0xfc00
 #define MSK_ADD		0xfc00
@@ -217,26 +224,34 @@
 #define OP_SWAP		0x9402
 #define OP_WDR		0x95a8
 
-class Avr: Mcu{
-friend class Timer;
+
+class Avr: public Mcu{
+// Friend classes
+	friend class Regs;
+	friend class Mem;
+// Friend internal devices
+	friend class Timer;
+	friend class Spi;
 private:
-	Regs regs;
+	Regs *regs;
 	Firmware fw;
 	Timer *timer;
-	uint8_t *sram;
+	Spi *spi;
+	Mem *sram;
 	uint16_t *flash;
 	uint8_t *eeprom;
+	Clock clock;					// System clock (cycles)
 	Pin pins[AVR_NUM_PINS];				// MCU Pins
 	int msize;					// Memory size
 	int fsize;					// Flash size
 	int esize;					// EEPROM size
 	uint16_t opcode;				// Current opcode
-	uint64_t cycles;				// Clock cycles elapsed
 	unsigned int watchdog_timer;			// Watchdog timer
 	bool stopped;					// Used by BREAK
 	bool sleeping;
 	unsigned int instructions;			// Number of instructions executed
-	std::vector<Device *> devices;			// List of attached devices
+	std::vector<InternalDevice *> intrn_devices;	// List of attached internal decices
+	std::queue<uint8_t> interrupts;
 	uint8_t nextInterrupt;
 	void initSRAM(unsigned int);			// Data Memory
 	void initFLASH(unsigned int);			// Program Memory
@@ -330,6 +345,7 @@ private:
 	void awake();
 	void interrupt(uint8_t);
 	void fireInterrupt(uint8_t);
+	void addInternalDevice(InternalDevice *);
 public:
 	Avr();
 	~Avr();
@@ -337,9 +353,11 @@ public:
 	Pin* getPins();
 	void step(void);
 	void run(void);
-	unsigned int getCycles(void);
+	uint64_t getCycles(void);
+	Clock getClock(void);
 	void dumpRegs(void);
-	void addDevice(Device *);
+	void addIOListener(uint8_t, InternalDevice *);
+	void addClockEvent(Event *);
 };
 
 #endif

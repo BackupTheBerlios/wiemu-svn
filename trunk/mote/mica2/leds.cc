@@ -27,6 +27,8 @@ Leds::Leds()
 	leds_prev[MICA2_LED_YELLOW] = leds[MICA2_LED_YELLOW].get();
 	leds_prev[MICA2_LED_GREEN] = leds[MICA2_LED_GREEN].get();
 	leds_prev[MICA2_LED_RED] = leds[MICA2_LED_RED].get();
+
+	clk_event.setDevice((void *)this);
 }
 
 Leds::~Leds()
@@ -35,33 +37,63 @@ Leds::~Leds()
 }
 
 void
-Leds::probe(uint64_t time)
+Leds::setMCU(Mcu *mcu)
+{
+	this->mcu = mcu;
+	mcu->addClockEvent(&clk_event);
+}
+
+void
+Leds::refresh()
 {
 	if(leds_prev[MICA2_LED_YELLOW] != leds[MICA2_LED_YELLOW].get()){
 		if(!leds[MICA2_LED_YELLOW].get())
-			std::cerr << time << ": Yellow ON" << std::endl;
+			std::cerr << mcu->getCycles() << ": Yellow ON" << std::endl;
 		else
-			std::cerr << time << ": Yellow OFF" << std::endl;
+			std::cerr << mcu->getCycles() << ": Yellow OFF" << std::endl;
 	}
 	if(leds_prev[MICA2_LED_GREEN] != leds[MICA2_LED_GREEN].get()){
 		if(!leds[MICA2_LED_GREEN].get())
-			std::cerr << time << ": Green ON" << std::endl;
+			std::cerr << mcu->getCycles() << ": Green ON" << std::endl;
 		else
-			std::cerr << time << ": Green OFF" << std::endl;
+			std::cerr << mcu->getCycles() << ": Green OFF" << std::endl;
 	}
 	if(leds_prev[MICA2_LED_RED] != leds[MICA2_LED_RED].get()){
 		if(!leds[MICA2_LED_RED].get())
-			std::cerr << time << ": Red ON" << std::endl;
+			std::cerr << mcu->getCycles() << ": Red ON" << std::endl;
 		else
-			std::cerr << time << ": Red OFF" << std::endl;
+			std::cerr << mcu->getCycles() << ": Red OFF" << std::endl;
 	}
 	leds_prev[MICA2_LED_YELLOW] = leds[MICA2_LED_YELLOW].get();
 	leds_prev[MICA2_LED_GREEN] = leds[MICA2_LED_GREEN].get();
 	leds_prev[MICA2_LED_RED] = leds[MICA2_LED_RED].get();
+
+	// TODO: use IO events instead
+	mcu->addClockEvent(&clk_event);
 }
 
 Pin*
 Leds::getPins()
 {
 	return this->leds;
+}
+
+/*
+	ClockEvent
+*/
+Leds::ClockEvent::ClockEvent()
+{
+	cycles = 1;
+}
+
+void
+Leds::ClockEvent::setDevice(void *dev)
+{
+	leds = (Leds *)dev;
+}
+
+void
+Leds::ClockEvent::fired()
+{
+	leds->refresh();
 }

@@ -20,8 +20,9 @@
 #define LEDS_HH
 
 #include <stdint.h>
-#include "../../include/device.hh"
-#include "../../include/pin.hh"
+#include "../../include/mcu"
+#include "../../include/device"
+#include "../../include/pin"
 
 #define MICA2_NUM_LEDS		3
 #define MICA2_LED_YELLOW	0
@@ -29,14 +30,27 @@
 #define MICA2_LED_RED		2
 
 class Leds: public Device{
+	// Inner classes
+	class ClockEvent: public Event{
+	private:
+		Leds *leds;
+	public:
+		ClockEvent();
+		void setDevice(void *);
+		void fired();
+	};
 public:
 	Leds();
 	~Leds();
-	void probe(uint64_t);
+	void setMCU(Mcu *);
+	void refresh();
 	Pin* getPins();
 private:
+	Mcu *mcu;
 	Pin leds[MICA2_NUM_LEDS];
 	bool leds_prev[MICA2_NUM_LEDS];
+	// Event Handlers
+	ClockEvent clk_event;
 };
 
 #endif

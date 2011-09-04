@@ -24,10 +24,13 @@
 
 #include <stdint.h>
 #include <queue>
-#include "../../include/device.hh"
-#include "../../include/pin.hh"
+#include "../../include/device"
+#include "../../include/pin"
 
 #include <fstream>	// <---- temp
+
+#define		LOW			false
+#define		HIGH			true
 
 #define		CC1000_PIN_PALE		26
 #define		CC1000_PIN_PCLK		24
@@ -65,16 +68,50 @@
 #define		CC1000_REG_TEST1	0x45		// Test register for Calibration
 #define		CC1000_REG_TEST0	0x46		// Test register for Calibration
 
-#define		LOW			false
-#define		HIGH			true
+
+#define		CC1000_MAIN_RXTX	7
+#define		CC1000_MAIN_F_REG	6
+#define		CC1000_MAIN_RX_PD	5
+#define		CC1000_MAIN_TX_PD	4
+#define		CC1000_MAIN_FS_PD	3
+#define		CC1000_MAIN_CORE_PD	2
+#define		CC1000_MAIN_BIAS_PD	1
+#define		CC1000_MAIN_RESET_N	0
+
+#define		CC1000_CAL_START	7
+#define		CC1000_CAL_DUAL		6
+#define		CC1000_CAL_WAIT		5
+#define		CC1000_CAL_CURRENT	4
+#define		CC1000_CAL_COMPLETE	3
+#define		CC1000_CAL_ITERATE	0
+
 
 class CC1000: public Device{
+	// Inner classes
+	class ClockEvent: public Event{
+	private:
+		CC1000 *cc1000;
+	public:
+		ClockEvent();
+		void setDevice(void *);
+		void fired();
+	};
+	class CallibrationEvent: public Event{
+	private:
+		CC1000 *cc1000;
+	public:
+		void setDevice(void *);
+		void fired();
+		void setTime(double);
+	};
 public:
 	CC1000();
 	~CC1000();
-	void probe(uint64_t);
+	void setMCU(Mcu *);
+	void tick();
 	Pin* getPins();
 private:
+	Mcu *mcu;
 	std::ofstream logf;	// <----- temp
 	Pin pins[CC1000_NUM_PINS];
 	uint8_t registers[CC1000_NUM_REGS];
@@ -88,7 +125,18 @@ private:
 	bool dio, dio_prev;
 	bool dclk, dclk_prev;
 	bool rssi, rssi_prev;
+	uint32_t freqA, freqB;
+	uint16_t fsep;
 	std::queue<void (CC1000::*)()> callbacks;
+
+	static const double BAUD_RATE[8];
+	static const std::string ENCODING[4];
+	static const double XOSC_FREQ[4];
+
+	// Event Handlers
+	ClockEvent clk_event;
+	CallibrationEvent cal_event;
+
 	void readAddress();
 	void readW();
 	void readData();
@@ -97,6 +145,11 @@ private:
 	void print2();
 	void print3();
 	void dump(uint64_t);
+	void resetRegisters();
+	void configure(uint8_t);
+	void calibrate();
+	void calibrationCompleted();
+	void compare();
 };
 
 #endif

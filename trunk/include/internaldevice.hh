@@ -1,5 +1,5 @@
 /**
-    device.cc
+    internaldevice.hh
     Copyright (C) 2011  Mohamed Aslan <maslan@maslan.info>
 
     This program is free software: you can redistribute it and/or modify
@@ -16,5 +16,30 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
-#include "include/device.hh"
+/**
+ * Internal devices gets access to MCU's internals
+**/
 
+#ifndef INTERNALDEVICE_HH
+#define INTERNALDEVICE_HH
+
+#include <stdint.h>
+
+#define	DEV_IO_READ	0x0
+#define	DEV_IO_WRITE	0x1
+#define	DEV_IO_CHANGED	0x2
+
+class Mcu;
+
+/*
+ * Every internal device should be a friend of it's microcontroller class
+ */
+class InternalDevice{
+private:
+
+public:
+	virtual void setMCU(Mcu *) = 0;
+	virtual void probeIO(uint8_t, uint8_t) = 0;
+};
+
+#endif

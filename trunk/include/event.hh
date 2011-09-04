@@ -1,5 +1,5 @@
 /**
-    device.cc
+    event.hh
     Copyright (C) 2011  Mohamed Aslan <maslan@maslan.info>
 
     This program is free software: you can redistribute it and/or modify
@@ -16,5 +16,16 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
-#include "include/device.hh"
+#ifndef EVENT_HH
+#define EVENT_HH
 
+class Event{
+friend class Clock;
+protected:
+	uint64_t cycles;
+public:
+	virtual void setDevice(void *) = 0;		// sadly C++ does not support pure virtual constructors :(
+	virtual void fired() = 0;
+};
+
+#endif

@@ -16,7 +16,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
+#include "avr.hh"
 #include "regs.hh"
+#include "mem.hh"
 #include <iostream>
 #include <iomanip>
 #include <sstream>			// To be removed
@@ -31,63 +33,67 @@ Regs::reg_names[] = {
 
 Regs::Regs(){}
 
+Regs::Regs(Avr *avr){
+	this->avr = avr;
+}
+
 Regs::~Regs(){}
 
-void
-Regs::setMem(uint8_t *mem){
-	this->r = mem;
+uint8_t&
+Regs::operator[](const int reg){
+	return (*(avr->sram))[reg];
 }
 
 void
 Regs::init(){
 	for(int i=0 ; i<32; i++)
-		this->r[i] = 0;
-	this->pc = 0;
-	this->oldpc = 0;
-	this->r[REG_SREG] = 0;
-	this->r[REG_SPL] = 0;
-	this->r[REG_SPH] = 0;
+		(*(avr->sram))[i] = 0;
+	pc = 0;
+	oldpc = 0;
+	(*(avr->sram))[REG_SREG] = 0;
+	(*(avr->sram))[REG_SPL] = 0;
+	(*(avr->sram))[REG_SPH] = 0;
 }
 
 void
 Regs::dump(){
 	for(int i=0 ; i<32 ; i++){
 		std::cout << "R" << std::setfill('0') << std::setw(2) << std::dec << i << std::hex;
-		std::cout << "=" << std::setfill('0') << std::setw(2) << (int)this->r[i] << "   ";
+		std::cout << "=" << std::setfill('0') << std::setw(2) << (int)(*(avr->sram))[i] << "   ";
 		if(!((i+1)%8))
 			std::cout << std::endl;
 	}
 	std::cout << "X=";
 	std::cout << std::setw(2);
-	std::cout << (int)this->r[REG_R27];
+	std::cout << (int)(*(avr->sram))[REG_R27];
 	std::cout << std::setw(2);
-	std::cout << (int)this->r[REG_R26];
+	std::cout << (int)(*(avr->sram))[REG_R26];
 	std::cout << "   ";
 	std::cout << "Y=";
 	std::cout << std::setw(2);
-	std::cout << (int)this->r[REG_R29];
+	std::cout << (int)(*(avr->sram))[REG_R29];
 	std::cout << std::setw(2);
-	std::cout << (int)this->r[REG_R28];
+	std::cout << (int)(*(avr->sram))[REG_R28];
 	std::cout << "   ";
 	std::cout << "Z=";
 	std::cout << std::setw(2);
-	std::cout << (int)this->r[REG_R31];
+	std::cout << (int)(*(avr->sram))[REG_R31];
 	std::cout << std::setw(2);
-	std::cout << (int)this->r[REG_R30];
+	std::cout << (int)(*(avr->sram))[REG_R30];
 	std::cout << "   ";
 	// Mapped in the I/O
 	std::cout << "SP=";
 	std::cout << std::setw(2);
-	std::cout << (int)this->r[REG_SPH];		// SPH
+	std::cout << (int)(*(avr->sram))[REG_SPH];		// SPH
 	std::cout << std::setw(2);
-	std::cout << (int)this->r[REG_SPL];		// SPL
+	std::cout << (int)(*(avr->sram))[REG_SPL];		// SPL
 	std::cout << "   ";
 	// Mapped in the I/O
 	std::cout << "SREG=";
-	std::cout << std::setw(2) << (int)this->r[REG_SREG];
+	std::cout << std::setw(2) << (int)(*(avr->sram))[REG_SREG];
 	std::cout << "   ";
 	std::cout << "PC=";
-	std::cout << std::setw(4) << this->pc;
+	std::cout << std::setw(4) << pc;
 	std::cout << std::dec << std::endl;
 }
 
@@ -96,41 +102,41 @@ Regs::dump2(){
 	std::stringstream ss;
 	for(int i=0 ; i<32 ; i++){
 		ss << "R" << std::setfill('0') << std::setw(2) << std::dec << i << std::hex;
-		ss << "=" << std::setfill('0') << std::setw(2) << (int)this->r[i] << "   ";
+		ss << "=" << std::setfill('0') << std::setw(2) << (int)(*(avr->sram))[i] << "   ";
 		if(!((i+1)%8))
 			ss << std::endl;
 	}
 	ss << "X=";
 	ss << std::setw(2);
-	ss << (int)this->r[REG_R27];
+	ss << (int)(*(avr->sram))[REG_R27];
 	ss << std::setw(2);
-	ss << (int)this->r[REG_R26];
+	ss << (int)(*(avr->sram))[REG_R26];
 	ss << "   ";
 	ss << "Y=";
 	ss << std::setw(2);
-	ss << (int)this->r[REG_R29];
+	ss << (int)(*(avr->sram))[REG_R29];
 	ss << std::setw(2);
-	ss << (int)this->r[REG_R28];
+	ss << (int)(*(avr->sram))[REG_R28];
 	ss << "   ";
 	ss << "Z=";
 	ss << std::setw(2);
-	ss << (int)this->r[REG_R31];
+	ss << (int)(*(avr->sram))[REG_R31];
 	ss << std::setw(2);
-	ss << (int)this->r[REG_R30];
+	ss << (int)(*(avr->sram))[REG_R30];
 	ss << "   ";
 	// Mapped in the I/O
 	ss << "SP=";
 	ss << std::setw(2);
-	ss << (int)this->r[REG_SPH];		// SPH
+	ss << (int)(*(avr->sram))[REG_SPH];		// SPH
 	ss << std::setw(2);
-	ss << (int)this->r[REG_SPL];		// SPL
+	ss << (int)(*(avr->sram))[REG_SPL];		// SPL
 	ss << "   ";
 	// Mapped in the I/O
 	ss << "SREG=";
-	ss << std::setw(2) << (int)this->r[REG_SREG];
+	ss << std::setw(2) << (int)(*(avr->sram))[REG_SREG];
 	ss << "   ";
 	ss << "PC=";
-	ss << std::setw(4) << this->pc;
+	ss << std::setw(4) << pc;
 	ss << std::dec << std::endl;
 	return ss.str();
 }
@@ -141,19 +147,19 @@ Regs::dump3(uint16_t pc, uint64_t clk){
 	for(int i=0 ; i<32 ; i++){
 		if(!((i+1)%8)){
 			ss << "R" << i;
-			ss << "=" << (int)this->r[i];
+			ss << "=" << (int)(*(avr->sram))[i];
 			ss << std::endl;
 		}else{
 			ss << "R" << i;
-			ss << "=" << (int)this->r[i] << " ";
+			ss << "=" << (int)(*(avr->sram))[i] << " ";
 		}
 	}
-	uint16_t sp = (this->r[REG_SPH] << 8) | this->r[REG_SPL];
+	uint16_t sp = ((*(avr->sram))[REG_SPH] << 8) | (*(avr->sram))[REG_SPL];
 	ss << "SP=";
 	ss << (int)sp;
 	ss << " ";
 	ss << "SREG=";
-	ss << (int)this->r[REG_SREG];
+	ss << (int)(*(avr->sram))[REG_SREG];
 	ss << " ";
 	ss << "PC=";
 	ss << (int)(pc*2);
@@ -166,166 +172,166 @@ Regs::dump3(uint16_t pc, uint64_t clk){
 
 void
 Regs::setI(){
-	this->r[REG_SREG] |= 0x80;
+	(*(avr->sram))[REG_SREG] |= 0x80;
 }
 
 void
 Regs::clearI(){
-	this->r[REG_SREG] &= 0x7f;
+	(*(avr->sram))[REG_SREG] &= 0x7f;
 }
 
 bool
 Regs::isI(){
-	return this->r[REG_SREG] & 0x80;
+	return (*(avr->sram))[REG_SREG] & 0x80;
 }
 
 void
 Regs::setT(){
-	this->r[REG_SREG] |= 0x40;
+	(*(avr->sram))[REG_SREG] |= 0x40;
 }
 
 void
 Regs::clearT(){
-	this->r[REG_SREG] &= 0xbf;
+	(*(avr->sram))[REG_SREG] &= 0xbf;
 }
 
 bool
 Regs::isT(){
-	return this->r[REG_SREG] & 0x40;
+	return (*(avr->sram))[REG_SREG] & 0x40;
 }
 
 void
 Regs::setH(){
-	this->r[REG_SREG] |= 0x20;
+	(*(avr->sram))[REG_SREG] |= 0x20;
 }
 
 void
 Regs::clearH(){
-	this->r[REG_SREG] &= 0xdf;
+	(*(avr->sram))[REG_SREG] &= 0xdf;
 }
 
 bool
 Regs::isH(){
-	return this->r[REG_SREG] & 0x20;
+	return (*(avr->sram))[REG_SREG] & 0x20;
 }
 
 void
 Regs::setS(){
-	this->r[REG_SREG] |= 0x10;
+	(*(avr->sram))[REG_SREG] |= 0x10;
 }
 
 void
 Regs::clearS(){
-	this->r[REG_SREG] &= 0xef;
+	(*(avr->sram))[REG_SREG] &= 0xef;
 }
 
 bool
 Regs::isS(){
-	return this->r[REG_SREG] & 0x10;
+	return (*(avr->sram))[REG_SREG] & 0x10;
 }
 
 void
 Regs::setV(){
-	this->r[REG_SREG] |= 0x8;
+	(*(avr->sram))[REG_SREG] |= 0x8;
 }
 
 void
 Regs::clearV(){
-	this->r[REG_SREG] &= 0xf7;
+	(*(avr->sram))[REG_SREG] &= 0xf7;
 }
 
 bool
 Regs::isV(){
-	return this->r[REG_SREG] & 0x8;
+	return (*(avr->sram))[REG_SREG] & 0x8;
 }
 
 void
 Regs::setN(){
-	this->r[REG_SREG] |= 0x4;
+	(*(avr->sram))[REG_SREG] |= 0x4;
 }
 
 void
 Regs::clearN(){
-	this->r[REG_SREG] &= 0xfb;
+	(*(avr->sram))[REG_SREG] &= 0xfb;
 }
 
 bool
 Regs::isN(){
-	return this->r[REG_SREG] & 0x4;
+	return (*(avr->sram))[REG_SREG] & 0x4;
 }
 
 void
 Regs::setZ(){
-	this->r[REG_SREG] |= 0x2;
+	(*(avr->sram))[REG_SREG] |= 0x2;
 }
 
 void
 Regs::clearZ(){
-	this->r[REG_SREG] &= 0xfd;
+	(*(avr->sram))[REG_SREG] &= 0xfd;
 }
 
 bool
 Regs::isZ(){
-	return this->r[REG_SREG] & 0x2;
+	return (*(avr->sram))[REG_SREG] & 0x2;
 }
 
 void
 Regs::setC(){
-	this->r[REG_SREG] |= 0x1;
+	(*(avr->sram))[REG_SREG] |= 0x1;
 }
 
 void
 Regs::clearC(){
-	this->r[REG_SREG] &= 0xfe;
+	(*(avr->sram))[REG_SREG] &= 0xfe;
 }
 
 bool
 Regs::isC(){
-	return this->r[REG_SREG] & 0x1;
+	return (*(avr->sram))[REG_SREG] & 0x1;
 }
 
 uint16_t
 Regs::getX(){
-	return ((this->r[REG_R27] << 8) | (this->r[REG_R26]));
+	return (((*(avr->sram))[REG_R27] << 8) | ((*(avr->sram))[REG_R26]));
 }
 
 void
 Regs::setX(uint16_t X){
-	this->r[REG_R27] = (uint8_t)(X >> 8);
-	this->r[REG_R26] = (uint8_t)(X);
+	(*(avr->sram))[REG_R27] = (uint8_t)(X >> 8);
+	(*(avr->sram))[REG_R26] = (uint8_t)(X);
 }
 
 uint16_t
 Regs::getY(){
-	return ((this->r[REG_R29] << 8) | (this->r[REG_R28]));
+	return (((*(avr->sram))[REG_R29] << 8) | ((*(avr->sram))[REG_R28]));
 }
 
 void
 Regs::setY(uint16_t Y){
-	this->r[REG_R29] = (uint8_t)(Y >> 8);
-	this->r[REG_R28] = (uint8_t)(Y);
+	(*(avr->sram))[REG_R29] = (uint8_t)(Y >> 8);
+	(*(avr->sram))[REG_R28] = (uint8_t)(Y);
 }
 
 uint16_t
 Regs::getZ(){
-	return ((this->r[REG_R31] << 8) | (this->r[REG_R30]));
+	return (((*(avr->sram))[REG_R31] << 8) | ((*(avr->sram))[REG_R30]));
 }
 
 void
 Regs::setZ(uint16_t Z){
-	this->r[REG_R31] = (uint8_t)(Z >> 8);
-	this->r[REG_R30] = (uint8_t)(Z);
+	(*(avr->sram))[REG_R31] = (uint8_t)(Z >> 8);
+	(*(avr->sram))[REG_R30] = (uint8_t)(Z);
 }
 
 uint16_t
 Regs::getSP(){
-	return ((this->r[REG_SPH] << 8) | (this->r[REG_SPL]));
+	return (((*(avr->sram))[REG_SPH] << 8) | ((*(avr->sram))[REG_SPL]));
 }
 
 void
 Regs::setSP(uint16_t SP){
-	this->r[REG_SPH] = (uint8_t)(SP >> 8);
-	this->r[REG_SPL] = (uint8_t)(SP);
+	(*(avr->sram))[REG_SPH] = (uint8_t)(SP >> 8);
+	(*(avr->sram))[REG_SPL] = (uint8_t)(SP);
 }
 
 std::string
