@@ -40,9 +40,20 @@
 #define	AVR_SPSR_SPIF	7		// SPI Interrupt Flag
 #define	AVR_SPSR_WCOL	6		// Write COLlision flag
 #define	AVR_SPSR_SPI2X	0		// Double SPI Speed Bit
+// PINS
+#define	SCK		1		// PINB1
 
 #define	SLAVE		0
 #define	MASTER		1
+
+#define	LOW		false
+#define	HIGH		true
+
+#define	LEADING		false
+#define TRAILING	true
+
+#define	MSB		0x80
+#define	LSB		0x00
 
 #include <fstream>
 
@@ -51,12 +62,23 @@ class Avr;
 class Spi: InternalDevice{
 private:
 	Avr *avr;
-	bool idle;
+	uint8_t spcr, spsr, spdr, spdr_buf;
+	bool enabled;
 	bool operating;
+	bool sck, sck_prev;
+	bool ss, ss_prev;
+	bool mosi;
+	bool miso;
+	bool cpha, clk_state;		// LEADING or TRAILING
+	bool cpol;
+	unsigned int bits;
+	void master();
+	void slave();
+	void reset();
 	void printSPCR();
 	void printSPSR();
 	void printSPDR();
-	std::ofstream log;
+	std::ofstream rxf, txf;
 public:
 	Spi();
 	void setMCU(Mcu *);

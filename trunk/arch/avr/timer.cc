@@ -249,7 +249,6 @@ Timer::updateTimer0(){
 	if(tcnt0_prev != tcnt0){
 		// Check for Overflow
 		if(tcnt0 == 0){
-			std::cerr << "OPS OVF......" << std::endl;
 			tifr |= (1 << TOV0);
 		}
 		// Compare Match
@@ -263,6 +262,7 @@ Timer::updateTimer0(){
 		if((timsk & (1 << OCIE0)) && (tifr & (1 << OCF0))){
 			// Clear OCF0
 			tifr &= ~(1 << OCF0);
+			std::cerr << "Timer0 COMP......" << std::endl;
 			// Interrupt
 			avr->fireInterrupt(15);
 		}

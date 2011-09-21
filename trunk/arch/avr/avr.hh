@@ -29,6 +29,7 @@
 #include "pins.hh"
 #include "timer.hh"
 #include "spi.hh"
+#include "adc.hh"
 #include <vector>
 #include <queue>
 
@@ -232,12 +233,14 @@ class Avr: public Mcu{
 // Friend internal devices
 	friend class Timer;
 	friend class Spi;
+	friend class Adc;
 private:
 	Regs *regs;
 	Firmware fw;
 	Timer *timer;
-	Spi *spi;
 	Mem *sram;
+	Spi *spi;
+	Adc *adc;
 	uint16_t *flash;
 	uint8_t *eeprom;
 	Clock clock;					// System clock (cycles)
@@ -358,6 +361,7 @@ public:
 	void dumpRegs(void);
 	void addIOListener(uint8_t, InternalDevice *);
 	void addClockEvent(Event *);
+	uint16_t getPC();
 };
 
 #endif

@@ -20,11 +20,13 @@
 #define MICA2_HH
 
 #include "../../arch/avr/avr.hh"
-#include "../../include/clock.hh"
+#include "../../include/clock"
+#include "../../include/node"
+#include "../../include/mote"
 #include "leds.hh"
 #include "cc1000.hh"
 
-class Mica2{
+class Mica2: public Mote{
 public:
 	Mica2();
 	~Mica2();
@@ -32,8 +34,10 @@ public:
 	void run();
 	void step();
 	uint64_t getCycles();
+	void setNode(Node *);
 	void display();
 private:
+	Node *node;
 	Avr mcu;
 	Leds leds;
 	CC1000 cc1000;

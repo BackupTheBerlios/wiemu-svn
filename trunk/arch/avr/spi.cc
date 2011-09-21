@@ -24,7 +24,17 @@
 #include <fstream> // <--- temp
 
 Spi::Spi(){
-	log.open("spi.log");
+	enabled = false;
+	ss = HIGH;
+	ss_prev = HIGH;
+	sck = LOW;
+	sck_prev = LOW;
+	clk_state = LEADING;
+	bits = 0;
+	spdr = 0;
+	spdr_buf = 0;
+	txf.open("tx.dat");
+	rxf.open("rx.dat");
 }
 
 void
@@ -33,6 +43,7 @@ Spi::setMCU(Mcu *mcu){
 	avr->addIOListener(AVR_IOREG_SPCR, this);
 	avr->addIOListener(AVR_IOREG_SPSR, this);
 	avr->addIOListener(AVR_IOREG_SPDR, this);
+	avr->addIOListener(AVR_IOREG_PINB, this);
 }
 
 void
@@ -40,48 +51,106 @@ Spi::probeIO(uint8_t port, uint8_t verb){
 	switch(verb){
 		case DEV_IO_READ:
 			if(port == AVR_IOREG_SPCR){
-				log << avr->getCycles() << " " << std::hex << avr->regs->pc*2 << std::dec << " ";
-				log << "SPI READ SPCR = 0x" << std::hex << (int)(*(avr->sram))[AVR_IOREG_SPCR + AVR_IO_BASE] << std::dec << std::endl;
+				(*(avr->sram))[AVR_IOREG_SPCR + AVR_IO_BASE] = spcr;
 			}
 			else if(port == AVR_IOREG_SPSR){
-				log << avr->getCycles() << " " << std::hex << avr->regs->pc*2 << std::dec << " ";
-				log << "SPI READ SPSR = 0x" << std::hex << (int)(*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE] << std::dec << std::endl;
+				(*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE] = spsr;
 			}
 			else if(port == AVR_IOREG_SPDR){
-				log << avr->getCycles() << " " << std::hex << avr->regs->pc*2 << std::dec << " ";
-				log << "SPI READ SPDR = 0x" << std::hex << (int)(*(avr->sram))[AVR_IOREG_SPDR + AVR_IO_BASE] << std::dec << std::endl;
-				//(*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE] |= (1 << AVR_SPSR_SPIF);
+				spdr = spdr_buf;
+				(*(avr->sram))[AVR_IOREG_SPDR + AVR_IO_BASE] = spdr;
+				rxf << avr->getCycles() << "\t" << std::hex << int(spdr) << std::dec << std::endl;
+			}
+			else if(port == AVR_IOREG_PINB){
 			}
 			break;
 		case DEV_IO_WRITE:
 			if(port == AVR_IOREG_SPCR){
-				log << avr->getCycles() << " " << std::hex << avr->regs->pc*2 << std::dec << " ";
-				log << "SPI WRITE SPCR = 0x" << std::hex << (int)(*(avr->sram))[AVR_IOREG_SPCR + AVR_IO_BASE] << std::dec << std::endl;
+				spcr = (*(avr->sram))[AVR_IOREG_SPCR + AVR_IO_BASE];
+				if(spcr & (1 << AVR_SPCR_SPE))
+					enabled = true;
+				else
+					enabled = false;
+				if(spcr & (1 << AVR_SPCR_CPHA))
+					cpha = TRAILING;
+				else
+					cpha = LEADING;
+				if(spcr & (1 << AVR_SPCR_CPOL))
+					cpol = LOW;
+				else
+					cpol = HIGH;
+				reset();
 				//printSPCR();
-				log << "Interrupt = 18" << std::endl;
-				avr->fireInterrupt(17);
 			}
 			else if(port == AVR_IOREG_SPSR){
-				log << avr->getCycles() << " " << std::hex << avr->regs->pc*2 << std::dec << " ";
-				log << "SPI WRITE SPSR = 0x" << std::hex << (int)(*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE] << std::dec << std::endl;
+				spsr = (*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE];
 			}
 			else if(port == AVR_IOREG_SPDR){
-				log << avr->getCycles() << " " << std::hex << avr->regs->pc*2 << std::dec << " ";
-				log << "SPI WRITE SPDR = 0x" << std::hex << (int)(*(avr->sram))[AVR_IOREG_SPDR + AVR_IO_BASE] << std::dec << std::endl;
-				//(*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE] |= (1 << AVR_SPSR_SPIF);
+				spdr = (*(avr->sram))[AVR_IOREG_SPDR + AVR_IO_BASE];
+				reset();
+				txf << avr->getCycles() << "\t" << std::hex << int(spdr) << std::dec << std::endl;
+			}
+			else if(port == AVR_IOREG_PINB){
+				if(!enabled)					// SPI disabled
+					return;
+				// SS
+				ss_prev = ss;
+				ss = avr->getPins()[AVR_PIN_PB0].get();		// read SS from PB0 pin
+				// SCK
+				sck_prev = sck;
+				sck = avr->getPins()[AVR_PIN_PB1].get();	// read SCK from PB1 pin
+				if(sck_prev != sck){ 				// tick
+					if(operating == MASTER)
+						master();
+					else
+						slave();
+					clk_state = !clk_state;
+				}
 			}
 			break;
 	}
-	uint8_t spcr = (*(avr->sram))[AVR_IOREG_SPCR + AVR_IO_BASE];
-	uint8_t spsr = (*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE];
-	// is SPI interrupt enabled?
-	if((spcr & (1 << AVR_SPCR_SPIE)) && (spsr & (1 << AVR_SPSR_SPIF))){
-		(*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE] &= ~(1 << AVR_SPSR_SPIF);
-		log << avr->getCycles() << " " << std::hex << avr->regs->pc*2 << std::dec << " ";
-		log << "Interrupt = 18" << std::endl;
-		avr->fireInterrupt(17);
+	rxf.flush();
+	txf.flush();
+}
+
+void
+Spi::reset(){
+	bits = 8;
+	(*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE] &= ~(1 << AVR_SPSR_SPIF);
+}
+
+void
+Spi::master(){
+	// TODO
+}
+
+void
+Spi::slave(){
+	// Working as SLAVE
+	if(ss != LOW)
+		return;
+	if((clk_state != cpha) || (sck != cpol))
+		return;
+	if(bits){
+		--bits;
+		if(spdr & MSB)				// write MISO to PB3 pin
+			avr->getPins()[AVR_PIN_PB3].set();
+		else
+			avr->getPins()[AVR_PIN_PB3].clear();
+		if(avr->getPins()[AVR_PIN_PB2].get())	// read MOSI from PB2 pin
+			spdr_buf |= 0x1;		// set the LSB
+		else
+			spdr_buf &= 0xfe;		// clear the LSB
+		spdr <<= 1;
+		spdr_buf <<= 1;
+		if(!bits){
+			(*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE] |= (1 << AVR_SPSR_SPIF);
+			if(spcr & (1 << AVR_SPCR_SPIE)){		// Interrupts are enabled?
+				(*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE] &= ~(1 << AVR_SPSR_SPIF); //<---
+				avr->fireInterrupt(17);
+			}
+		}
 	}
-	log.flush();
 }
 
 void

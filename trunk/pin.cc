@@ -17,7 +17,7 @@
 **/
 
 #include "include/pin.hh"
-#include<iostream>
+#include <iostream>
 
 Pin::Pin()
 {
@@ -100,4 +100,20 @@ Pin::bind(Pin &bp1, Pin &bp2)
 	bp1.bpin = &bp2;
 	bp2.bpin = &bp1;
 	bp1.pin = bp2.pin;
+	bp1.val = bp2.val;
 }
+
+void
+Pin::setAnalogValue(double val)
+{
+	this->val = val;
+	if(is_bind)
+		this->bpin->val = this->val;
+}
+
+double
+Pin::getAnalogValue()
+{
+	return val;
+}
+

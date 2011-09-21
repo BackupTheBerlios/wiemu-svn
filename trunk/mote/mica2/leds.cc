@@ -18,6 +18,7 @@
 
 #include "leds.hh"
 #include <iostream>
+#include <fstream>
 
 Leds::Leds()
 {
@@ -29,11 +30,12 @@ Leds::Leds()
 	leds_prev[MICA2_LED_RED] = leds[MICA2_LED_RED].get();
 
 	clk_event.setDevice((void *)this);
+	logf.open("leds.dat");
 }
 
 Leds::~Leds()
 {
-
+	logf.close();
 }
 
 void
@@ -48,21 +50,21 @@ Leds::refresh()
 {
 	if(leds_prev[MICA2_LED_YELLOW] != leds[MICA2_LED_YELLOW].get()){
 		if(!leds[MICA2_LED_YELLOW].get())
-			std::cerr << mcu->getCycles() << ": Yellow ON" << std::endl;
+			logf << mcu->getCycles() << "\t" << "Y" << "\t" << "ON" << std::endl;
 		else
-			std::cerr << mcu->getCycles() << ": Yellow OFF" << std::endl;
+			logf << mcu->getCycles() << "\t" << "Y" << "\t" << "OFF" << std::endl;
 	}
 	if(leds_prev[MICA2_LED_GREEN] != leds[MICA2_LED_GREEN].get()){
 		if(!leds[MICA2_LED_GREEN].get())
-			std::cerr << mcu->getCycles() << ": Green ON" << std::endl;
+			logf << mcu->getCycles() << "\t" << "G" << "\t" << "ON"  << std::endl;
 		else
-			std::cerr << mcu->getCycles() << ": Green OFF" << std::endl;
+			logf << mcu->getCycles() << "\t" << "G" << "\t" << "OFF" << std::endl;
 	}
 	if(leds_prev[MICA2_LED_RED] != leds[MICA2_LED_RED].get()){
 		if(!leds[MICA2_LED_RED].get())
-			std::cerr << mcu->getCycles() << ": Red ON" << std::endl;
+			logf << mcu->getCycles() << "\t" << "R" << "\t" << "ON" << std::endl;
 		else
-			std::cerr << mcu->getCycles() << ": Red OFF" << std::endl;
+			logf << mcu->getCycles() << "\t" << "R" << "\t" << "OFF" << std::endl;
 	}
 	leds_prev[MICA2_LED_YELLOW] = leds[MICA2_LED_YELLOW].get();
 	leds_prev[MICA2_LED_GREEN] = leds[MICA2_LED_GREEN].get();
@@ -70,6 +72,8 @@ Leds::refresh()
 
 	// TODO: use IO events instead
 	mcu->addClockEvent(&clk_event);
+
+	logf.flush();
 }
 
 Pin*

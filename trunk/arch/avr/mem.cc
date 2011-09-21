@@ -59,13 +59,11 @@ Mem::read(const uint16_t idx){
 			it->second->probeIO(idx - AVR_IO_START, DEV_IO_READ);
 		}
 	}
-	//std::cout << "READ idx 0x" << std::hex << (int)idx << " = 0x" << (int)mem[idx] << std::dec << std::endl;
 	return mem[idx];	// TODO: check for idx
 }
 
 void
 Mem::write(const uint16_t idx, const uint8_t val){
-	//std::cout << "WRITE idx 0x" << std::hex << (int)idx << " = 0x" << (int)val << std::dec << std::endl;
 	mem[idx] = val;	// TODO: check for idx
 	if(idx>=AVR_IO_START && idx<=AVR_IO_END){
 		std::map<uint8_t, InternalDevice *>::iterator it = iomap.find(idx);

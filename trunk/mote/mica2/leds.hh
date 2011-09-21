@@ -20,6 +20,7 @@
 #define LEDS_HH
 
 #include <stdint.h>
+#include <fstream>
 #include "../../include/mcu"
 #include "../../include/device"
 #include "../../include/pin"
@@ -51,6 +52,7 @@ private:
 	bool leds_prev[MICA2_NUM_LEDS];
 	// Event Handlers
 	ClockEvent clk_event;
+	std::ofstream logf;
 };
 
 #endif

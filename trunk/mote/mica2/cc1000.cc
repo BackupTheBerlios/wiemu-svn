@@ -20,6 +20,9 @@
 #include <iostream>
 
 #include <fstream>
+#include <cstdlib>
+
+#include "../../arch/avr/avr.hh"
 
 const double CC1000::BAUD_RATE[8] = {
 	0.6,		// 0.6 kDb
@@ -86,20 +89,26 @@ CC1000::CC1000()
 	pale = pins[CC1000_PIN_PALE].get();
 	pclk = pins[CC1000_PIN_PCLK].get();
 	pdata = pins[CC1000_PIN_PDATA].get();
-	dio = pins[CC1000_PIN_DIO].get();
-	rssi = pins[CC1000_PIN_RSSI].get();
+	dclk = LOW;
+	dio = LOW;
 	address = 0;
 	w = false;
 	data = 0;
+	rx_pd = false;
+	tx_pd = false;
 
 	clk_event.setDevice((void *)this);
+	cal_event.setDevice((void *)this);
+	dclk_event.setDevice((void *)this);	
 
 	logf.open("cc1000.log");
+	logf2.open("cc1000_read.log");
 }
 
 CC1000::~CC1000()
 {
-
+	logf.close();
+	logf2.close();
 }
 
 void CC1000::setMCU(Mcu *mcu)
@@ -111,7 +120,6 @@ void CC1000::setMCU(Mcu *mcu)
 void
 CC1000::tick()
 {
-	//dump(time);
 	if(!callbacks.empty()){
 		void (CC1000::*func)() = callbacks.front();
 		(this->*func)();
@@ -122,20 +130,7 @@ CC1000::tick()
 	pale = pins[CC1000_PIN_PALE].get();
 	pclk_prev = pclk;
 	pclk = pins[CC1000_PIN_PCLK].get();
-	// Data
-	dio_prev = dio;
-	dio = pins[CC1000_PIN_DIO].get();
-	dclk_prev = pins[CC1000_PIN_DCLK].get();
-	if(dclk)
-		pins[CC1000_PIN_DCLK].set();
-	else
-		pins[CC1000_PIN_DCLK].clear();
-	//rssi_prev = rssi;
-	//rssi = pins[CC1000_PIN_RSSI].get();
 	if(pale_prev == HIGH && pale == LOW){		// Address
-#ifdef DEBUG
-		//std::cerr << time << ": Addressing" << std::endl;
-#endif
 		address = 0;
 		address_nbits = 0;
 		w_nbits = 0;
@@ -150,14 +145,8 @@ CC1000::tick()
 		data = 0;
 		data_nbits = 0;
 		if(w){
-#ifdef DEBUG
-			//std::cerr << time << ": Data (W)" << std::endl;
-#endif
 			callbacks.push(&CC1000::writeData);
 		}else{
-#ifdef DEBUG
-			//std::cerr << time << ": Data (R)" << std::endl;
-#endif
 			callbacks.push(&CC1000::readData);
 		}
 	}
@@ -247,6 +236,7 @@ CC1000::readData()
 		if(data_nbits == 8){
 			print3();
 			callbacks.pop();		// Clean myself!
+			dump3(mcu->getCycles(), address);
 		}
 		data <<= 1;
 	}
@@ -313,6 +303,192 @@ CC1000::dump(uint64_t time)
 }
 
 void
+CC1000::dump2(uint64_t time, int reg)
+{
+	logf << "SCLK = " << (int)time << "\tPC = " << ((Avr *)mcu)->getPC()*2 << "\t";
+	switch(reg){
+		case CC1000_REG_MAIN:
+			logf << "MAIN = " << (int)registers[CC1000_REG_MAIN] << std::endl;
+			break;
+		case CC1000_REG_FREQ_2A:
+			logf << "FREQ2A = " << (int)registers[CC1000_REG_FREQ_2A] << std::endl;
+			break;
+		case CC1000_REG_FREQ_1A:
+			logf << "FREQ1A = " << (int)registers[CC1000_REG_FREQ_1A] << std::endl;
+			break;
+		case CC1000_REG_FREQ_0A:
+			logf << "FREQ0A = " << (int)registers[CC1000_REG_FREQ_0A] << std::endl;
+			break;
+		case CC1000_REG_FREQ_2B:
+			logf << "FREQ2B = " << (int)registers[CC1000_REG_FREQ_2B] << std::endl;
+			break;
+		case CC1000_REG_FREQ_1B:
+			logf << "FREQ1B = " << (int)registers[CC1000_REG_FREQ_1B] << std::endl;
+			break;
+		case CC1000_REG_FREQ_0B:
+			logf << "FREQ0B = " << (int)registers[CC1000_REG_FREQ_0B] << std::endl;
+			break;
+		case CC1000_REG_FSEP1:
+			logf << "FSEP1 = " << (int)registers[CC1000_REG_FSEP1] << std::endl;
+			break;
+		case CC1000_REG_FSEP0:
+			logf << "FSEP0 = " << (int)registers[CC1000_REG_FSEP0] << std::endl;
+			break;
+		case CC1000_REG_CURRENT:
+			logf << "CURRENT = " << (int)registers[CC1000_REG_CURRENT] << std::endl;
+			break;
+		case CC1000_REG_FRONT_END:
+			logf << "FRONT_END = " << (int)registers[CC1000_REG_FRONT_END] << std::endl;
+			break;
+		case CC1000_REG_PA_POW:
+			logf << "PA_POW = " << (int)registers[CC1000_REG_PA_POW] << std::endl;
+			break;
+		case CC1000_REG_PLL:
+			logf << "PLL = " << (int)registers[CC1000_REG_PLL] << std::endl;
+			break;
+		case CC1000_REG_LOCK:
+			logf << "LOCK = " << (int)registers[CC1000_REG_LOCK] << std::endl;
+			break;
+		case CC1000_REG_CAL:
+			logf << "CAL = " << (int)registers[CC1000_REG_CAL] << std::endl;
+			break;
+		case CC1000_REG_MODEM2:
+			logf << "MODEM2 = " << (int)registers[CC1000_REG_MODEM2] << std::endl;
+			break;
+		case CC1000_REG_MODEM1:
+			logf << "MODEM1 = " << (int)registers[CC1000_REG_MODEM1] << std::endl;
+			break;
+		case CC1000_REG_MODEM0:
+			logf << "MODEM0 = " << (int)registers[CC1000_REG_MODEM0] << std::endl;
+			break;
+		case CC1000_REG_MATCH:
+			logf << "MATCH = " << (int)registers[CC1000_REG_MATCH] << std::endl;
+			break;
+		case CC1000_REG_FSCTRL:
+			logf << "FSCTRL = " << (int)registers[CC1000_REG_FSCTRL] << std::endl;
+			break;
+		case CC1000_REG_PRESCALER:
+			logf << "PRESCALER = " << (int)registers[CC1000_REG_PRESCALER] << std::endl;
+			break;
+		case CC1000_REG_TEST6:
+			logf << "TEST6 = " << (int)registers[CC1000_REG_TEST6] << std::endl;
+			break;
+		case CC1000_REG_TEST5:
+			logf << "TEST5 = " << (int)registers[CC1000_REG_TEST5] << std::endl;
+			break;
+		case CC1000_REG_TEST4:
+			logf << "TEST4 = " << (int)registers[CC1000_REG_TEST4] << std::endl;
+			break;
+		case CC1000_REG_TEST3:
+			logf << "TEST3 = " << (int)registers[CC1000_REG_TEST3] << std::endl;
+			break;
+		case CC1000_REG_TEST2:
+			logf << "TEST2 = " << (int)registers[CC1000_REG_TEST2] << std::endl;
+			break;
+		case CC1000_REG_TEST1:
+			logf << "TEST1 = " << (int)registers[CC1000_REG_TEST1] << std::endl;
+			break;
+		case CC1000_REG_TEST0:
+			logf << "TEST0 = " << (int)registers[CC1000_REG_TEST0] << std::endl;
+			break;
+	}
+	logf.flush();
+}
+
+void
+CC1000::dump3(uint64_t time, int reg)
+{
+	logf2 << "SCLK = " << (int)time << "\tPC = " << ((Avr *)mcu)->getPC()*2 << "\t";
+	switch(reg){
+		case CC1000_REG_MAIN:
+			logf2 << "MAIN = " << (int)registers[CC1000_REG_MAIN] << std::endl;
+			break;
+		case CC1000_REG_FREQ_2A:
+			logf2 << "FREQ2A = " << (int)registers[CC1000_REG_FREQ_2A] << std::endl;
+			break;
+		case CC1000_REG_FREQ_1A:
+			logf2 << "FREQ1A = " << (int)registers[CC1000_REG_FREQ_1A] << std::endl;
+			break;
+		case CC1000_REG_FREQ_0A:
+			logf2 << "FREQ0A = " << (int)registers[CC1000_REG_FREQ_0A] << std::endl;
+			break;
+		case CC1000_REG_FREQ_2B:
+			logf2 << "FREQ2B = " << (int)registers[CC1000_REG_FREQ_2B] << std::endl;
+			break;
+		case CC1000_REG_FREQ_1B:
+			logf2 << "FREQ1B = " << (int)registers[CC1000_REG_FREQ_1B] << std::endl;
+			break;
+		case CC1000_REG_FREQ_0B:
+			logf2 << "FREQ0B = " << (int)registers[CC1000_REG_FREQ_0B] << std::endl;
+			break;
+		case CC1000_REG_FSEP1:
+			logf2 << "FSEP1 = " << (int)registers[CC1000_REG_FSEP1] << std::endl;
+			break;
+		case CC1000_REG_FSEP0:
+			logf2 << "FSEP0 = " << (int)registers[CC1000_REG_FSEP0] << std::endl;
+			break;
+		case CC1000_REG_CURRENT:
+			logf2 << "CURRENT = " << (int)registers[CC1000_REG_CURRENT] << std::endl;
+			break;
+		case CC1000_REG_FRONT_END:
+			logf2 << "FRONT_END = " << (int)registers[CC1000_REG_FRONT_END] << std::endl;
+			break;
+		case CC1000_REG_PA_POW:
+			logf2 << "PA_POW = " << (int)registers[CC1000_REG_PA_POW] << std::endl;
+			break;
+		case CC1000_REG_PLL:
+			logf2 << "PLL = " << (int)registers[CC1000_REG_PLL] << std::endl;
+			break;
+		case CC1000_REG_LOCK:
+			logf2 << "LOCK = " << (int)registers[CC1000_REG_LOCK] << std::endl;
+			break;
+		case CC1000_REG_CAL:
+			logf2 << "CAL = " << (int)registers[CC1000_REG_CAL] << std::endl;
+			break;
+		case CC1000_REG_MODEM2:
+			logf2 << "MODEM2 = " << (int)registers[CC1000_REG_MODEM2] << std::endl;
+			break;
+		case CC1000_REG_MODEM1:
+			logf2 << "MODEM1 = " << (int)registers[CC1000_REG_MODEM1] << std::endl;
+			break;
+		case CC1000_REG_MODEM0:
+			logf2 << "MODEM0 = " << (int)registers[CC1000_REG_MODEM0] << std::endl;
+			break;
+		case CC1000_REG_MATCH:
+			logf2 << "MATCH = " << (int)registers[CC1000_REG_MATCH] << std::endl;
+			break;
+		case CC1000_REG_FSCTRL:
+			logf2 << "FSCTRL = " << (int)registers[CC1000_REG_FSCTRL] << std::endl;
+			break;
+		case CC1000_REG_PRESCALER:
+			logf2 << "PRESCALER = " << (int)registers[CC1000_REG_PRESCALER] << std::endl;
+			break;
+		case CC1000_REG_TEST6:
+			logf2 << "TEST6 = " << (int)registers[CC1000_REG_TEST6] << std::endl;
+			break;
+		case CC1000_REG_TEST5:
+			logf2 << "TEST5 = " << (int)registers[CC1000_REG_TEST5] << std::endl;
+			break;
+		case CC1000_REG_TEST4:
+			logf2 << "TEST4 = " << (int)registers[CC1000_REG_TEST4] << std::endl;
+			break;
+		case CC1000_REG_TEST3:
+			logf2 << "TEST3 = " << (int)registers[CC1000_REG_TEST3] << std::endl;
+			break;
+		case CC1000_REG_TEST2:
+			logf2 << "TEST2 = " << (int)registers[CC1000_REG_TEST2] << std::endl;
+			break;
+		case CC1000_REG_TEST1:
+			logf2 << "TEST1 = " << (int)registers[CC1000_REG_TEST1] << std::endl;
+			break;
+		case CC1000_REG_TEST0:
+			logf2 << "TEST0 = " << (int)registers[CC1000_REG_TEST0] << std::endl;
+			break;
+	}
+	logf2.flush();
+}
+
+void
 CC1000::resetRegisters()
 {
 	registers[CC1000_REG_FREQ_2A] = 0x75;
@@ -347,16 +523,27 @@ CC1000::resetRegisters()
 void
 CC1000::configure(uint8_t addr)
 {
+	//dump(mcu->getCycles());
+	dump2(mcu->getCycles(), addr);
 	switch(addr){
 		case CC1000_REG_MAIN:
 			// TODO: FSM
 			if((registers[CC1000_REG_MAIN] & (1 << CC1000_MAIN_RESET_N)) == LOW){
 				std::cerr << "Initializing CC1000..." << std::endl;
-			}
-			else if((registers[CC1000_REG_MAIN] & (1 << CC1000_MAIN_RESET_N)) == HIGH){
-				std::cerr << "CC1000 initialized..." << std::endl;
 				resetRegisters();
 			}
+			// Receiver power down flag
+			rx_pd = registers[CC1000_REG_MAIN] & (1 << CC1000_MAIN_RX_PD);
+			// Trasmitter power down flag
+			tx_pd = registers[CC1000_REG_MAIN] & (1 << CC1000_MAIN_TX_PD);
+			// select Tx or Rx ??
+			rxtx = registers[CC1000_REG_MAIN] & (1 << CC1000_MAIN_RXTX);
+			if(rxtx == CC1000_RX && !rx_pd)
+				std::cerr << mcu->getCycles() << " RX mode" << std::endl;
+			if(rxtx == CC1000_TX && !tx_pd)
+				std::cerr << mcu->getCycles() << " TX mode" << std::endl;
+			if(!rx_pd || !tx_pd)
+				mcu->addClockEvent(&dclk_event);
 			break;
 		case CC1000_REG_PA_POW:
 			std::cerr << "Output Power:";
@@ -365,7 +552,7 @@ CC1000::configure(uint8_t addr)
 			compare();
 			break;
 		case CC1000_REG_LOCK:
-			std::cerr << "LOCK" << std::endl;
+			std::cerr << "LOCK = " << (int)((registers[CC1000_REG_LOCK] & 0xf0) >> 4) << std::endl;
 			break;
 		case CC1000_REG_MODEM2:
 			std::cerr << "MODEM2" << std::endl;
@@ -418,7 +605,7 @@ CC1000::configure(uint8_t addr)
 			std::cerr << "FRONT_END = " << (int)registers[CC1000_REG_FRONT_END] << std::endl;
 			break;
 		case CC1000_REG_PLL:
-			std::cerr << "REG_PLL = " << (int)registers[CC1000_REG_PLL] << std::endl;
+			std::cerr << "PLL = " << (int)registers[CC1000_REG_PLL] << std::endl;
 			break;
 		case CC1000_REG_CAL:
 			std::cerr << "CAL = " << (int)registers[CC1000_REG_CAL] << std::endl;
@@ -427,7 +614,9 @@ CC1000::configure(uint8_t addr)
 				calibrate();
 			}
 			break;
-		
+		case CC1000_REG_TEST4:
+			std::cerr << "TEST4 = " << (int)registers[CC1000_REG_TEST4] << std::endl;
+			break;		
 		default:
 			std::cerr << "Else: " << (int)addr << std::endl;
 			break;
@@ -437,11 +626,10 @@ CC1000::configure(uint8_t addr)
 void
 CC1000::calibrate()
 {
-	uint8_t refdiv = (registers[CC1000_REG_PLL] & 0x1e) >> 1;
+	uint8_t refdiv = (registers[CC1000_REG_PLL] >> 3) & 0xf;
 	double FXOSC_FREQUENCY = 14745600.0;
         double cal_time = (34.0 * 1000000.0 / FXOSC_FREQUENCY) * refdiv;
 	std::cerr << "Calibration should take: " << cal_time << " milliseconds" << std::endl;
-	cal_event.setDevice((void *)this);
 	cal_event.setTime(cal_time);
 	mcu->addClockEvent(&cal_event);
 }
@@ -480,6 +668,38 @@ Pin*
 CC1000::getPins()
 {
 	return this->pins;
+}
+
+void
+CC1000::DClkTick()
+{
+	dclk_prev = dclk;
+	dclk = !dclk;
+	if(dclk)
+		pins[CC1000_PIN_DCLK].set();
+	else
+		pins[CC1000_PIN_DCLK].clear();
+	// Receiver
+	if(rxtx == CC1000_RX){
+		dio_prev = dio;
+		// TODO: receive from air
+		dio = LOW;
+		dio == HIGH ? pins[CC1000_PIN_DIO].set() : pins[CC1000_PIN_DIO].clear();
+		// RSSI
+		pins[CC1000_PIN_RSSI].setAnalogValue(1.2);
+	}
+	// Transmitter
+	else{
+		// Data
+		dio_prev = dio;
+		dio = pins[CC1000_PIN_DIO].get();
+		// RSSI
+		pins[CC1000_PIN_RSSI].setAnalogValue(1.2);
+		// TODO: send to air
+	}
+	// If both Tx & Rx power down return otherwise continue
+	if(!tx_pd || !rx_pd)
+		mcu->addClockEvent(&dclk_event);
 }
 
 /*
@@ -521,5 +741,25 @@ void
 CC1000::CallibrationEvent::fired()
 {
 	cc1000->calibrationCompleted();
+}
+
+/*
+	DCLK Ticker
+*/
+CC1000::DClkEvent::DClkEvent()
+{
+	cycles = 416;
+}
+
+void
+CC1000::DClkEvent::setDevice(void *dev)
+{
+	cc1000 = (CC1000 *)dev;
+}
+
+void
+CC1000::DClkEvent::fired()
+{
+	cc1000->DClkTick();
 }
 

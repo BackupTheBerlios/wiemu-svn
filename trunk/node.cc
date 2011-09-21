@@ -1,5 +1,5 @@
 /**
-    pin.hh
+    node.cc
     Copyright (C) 2011  Mohamed Aslan <maslan@maslan.info>
 
     This program is free software: you can redistribute it and/or modify
@@ -16,36 +16,65 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
-#ifndef PIN_HH
-#define PIN_HH
+#include "mote/mica2/mica2.hh"
+#include "include/mote"
+#include "include/node"
 
-#include <string>
-#include <stdint.h>
+#include <iostream>
 
-class Pin{
-private:
-	bool pin;		// The binary value
-	double val;		// The analog value
-	std::string name;
-	bool is_bind;
-	Pin *bpin;
-public:
-	Pin();
-	Pin(std::string);
-	Pin(bool);
-	Pin(std::string, bool);
-	~Pin();
-	// Binary
-	void set();
-	void clear();
-	void toggle();
-	bool get();
-	// Analog
-	void setAnalogValue(double);
-	double getAnalogValue();
-	void setName(std::string);
-	std::string getName();
-	static void bind(Pin&, Pin&);
-};
+Node::Node(std::string flash)
+{
+	this->flash = flash;
+	mote = new Mica2();
+	mote->load(flash);
+}
 
-#endif
+Node::~Node()
+{
+	delete mote;
+}
+
+void
+Node::setID(int node_id)
+{
+	this->node_id = node_id;
+}
+
+int
+Node::getID()
+{
+	return node_id;
+}
+
+void
+Node::setLocation(int x, int y, int z)
+{
+	this->x = x;
+	this->y = y;
+	this->z = z;
+}
+
+void
+Node::setX(int x)
+{
+	this->x = x;
+}
+
+void
+Node::setY(int y)
+{
+	this->y = y;
+}
+
+void
+Node::setZ(int z)
+{
+	this->z = z;
+}
+
+Mote*
+Node::getMote()
+{
+	return mote;
+}
+

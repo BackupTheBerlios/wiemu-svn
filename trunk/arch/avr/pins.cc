@@ -152,8 +152,16 @@ Avr::writePins()
 void
 Avr::writePin(uint16_t DDR, uint16_t IN, uint16_t OUT, uint16_t PIN, uint8_t b)
 {
+/*
 	if(getBit((*sram)[AVR_IO_START+DDR], b)){	// Is Output?
 		if(getBit((*sram)[AVR_IO_START+OUT], b))
+			pins[PIN].set();
+		else
+			pins[PIN].clear();
+	}
+*/
+	if(sram->getBit(AVR_IO_START + DDR, b)){	// Is Output?
+		if(sram->getBit(AVR_IO_START + OUT, b))
 			pins[PIN].set();
 		else
 			pins[PIN].clear();
@@ -199,16 +207,47 @@ Avr::readPins()
 	readPin(AVR_IOREG_DDRD, AVR_IOREG_PIND, AVR_IOREG_PORTD, AVR_PIN_PD5, 5);
 	readPin(AVR_IOREG_DDRD, AVR_IOREG_PIND, AVR_IOREG_PORTD, AVR_PIN_PD6, 6);
 	readPin(AVR_IOREG_DDRD, AVR_IOREG_PIND, AVR_IOREG_PORTD, AVR_PIN_PD7, 7);
+	// Port E
+	readPin(AVR_IOREG_DDRE, AVR_IOREG_PINE, AVR_IOREG_PORTE, AVR_PIN_PE0, 0);
+	readPin(AVR_IOREG_DDRE, AVR_IOREG_PINE, AVR_IOREG_PORTE, AVR_PIN_PE1, 1);
+	readPin(AVR_IOREG_DDRE, AVR_IOREG_PINE, AVR_IOREG_PORTE, AVR_PIN_PE2, 2);
+	readPin(AVR_IOREG_DDRE, AVR_IOREG_PINE, AVR_IOREG_PORTE, AVR_PIN_PE3, 3);
+	readPin(AVR_IOREG_DDRE, AVR_IOREG_PINE, AVR_IOREG_PORTE, AVR_PIN_PE4, 4);
+	readPin(AVR_IOREG_DDRE, AVR_IOREG_PINE, AVR_IOREG_PORTE, AVR_PIN_PE5, 5);
+	readPin(AVR_IOREG_DDRE, AVR_IOREG_PINE, AVR_IOREG_PORTE, AVR_PIN_PE6, 6);
+	readPin(AVR_IOREG_DDRE, AVR_IOREG_PINE, AVR_IOREG_PORTE, AVR_PIN_PE7, 7);
+	// Port F
+	readPin(AVR_IOREG_DDRF, AVR_IOREG_PINF, AVR_IOREG_PORTF, AVR_PIN_PF0, 0);
+	readPin(AVR_IOREG_DDRF, AVR_IOREG_PINF, AVR_IOREG_PORTF, AVR_PIN_PF1, 1);
+	readPin(AVR_IOREG_DDRF, AVR_IOREG_PINF, AVR_IOREG_PORTF, AVR_PIN_PF2, 2);
+	readPin(AVR_IOREG_DDRF, AVR_IOREG_PINF, AVR_IOREG_PORTF, AVR_PIN_PF3, 3);
+	readPin(AVR_IOREG_DDRF, AVR_IOREG_PINF, AVR_IOREG_PORTF, AVR_PIN_PF4, 4);
+	readPin(AVR_IOREG_DDRF, AVR_IOREG_PINF, AVR_IOREG_PORTF, AVR_PIN_PF5, 5);
+	readPin(AVR_IOREG_DDRF, AVR_IOREG_PINF, AVR_IOREG_PORTF, AVR_PIN_PF6, 6);
+	readPin(AVR_IOREG_DDRF, AVR_IOREG_PINF, AVR_IOREG_PORTF, AVR_PIN_PF7, 7);
+	// Port G
+	readPin(AVR_IOREG_DDRG, AVR_IOREG_PING, AVR_IOREG_PORTG, AVR_PIN_PG0, 0);
+	readPin(AVR_IOREG_DDRG, AVR_IOREG_PING, AVR_IOREG_PORTG, AVR_PIN_PG1, 1);
+	readPin(AVR_IOREG_DDRG, AVR_IOREG_PING, AVR_IOREG_PORTG, AVR_PIN_PG2, 2);
+	readPin(AVR_IOREG_DDRG, AVR_IOREG_PING, AVR_IOREG_PORTG, AVR_PIN_PG3, 3);
 }
 
 void
 Avr::readPin(uint16_t DDR, uint16_t IN, uint16_t OUT, uint16_t PIN, uint8_t b)
 {
+/*
 	if(!getBit((*sram)[AVR_IO_START+DDR], b)){	// Is Input?
 		if(pins[PIN].get())
 			setBit((*sram)[AVR_IO_START+IN], b);
 		else
 			clearBit((*sram)[AVR_IO_START+IN], b);
+	}
+*/
+	if(!sram->getBit(AVR_IO_START + DDR, b)){	// Is Input?
+		if(pins[PIN].get())
+			sram->setBit(AVR_IO_START + IN, b);
+		else
+			sram->clearBit(AVR_IO_START + IN, b);
 	}
 }
 

@@ -27,9 +27,11 @@ Mica2::Mica2()
 	Pin::bind(cc1000.getPins()[CC1000_PIN_PALE], mcu.getPins()[AVR_PIN_PD4]);
 	Pin::bind(cc1000.getPins()[CC1000_PIN_PCLK], mcu.getPins()[AVR_PIN_PD6]);
 	Pin::bind(cc1000.getPins()[CC1000_PIN_PDATA], mcu.getPins()[AVR_PIN_PD7]);
-	Pin::bind(cc1000.getPins()[CC1000_PIN_DIO], mcu.getPins()[AVR_PIN_PB3]);	// <--
+	Pin::bind(cc1000.getPins()[CC1000_PIN_DIO], mcu.getPins()[AVR_PIN_PB3]);
+	Pin::bind(cc1000.getPins()[CC1000_PIN_DIO], mcu.getPins()[AVR_PIN_PB2]);
 	Pin::bind(cc1000.getPins()[CC1000_PIN_DCLK], mcu.getPins()[AVR_PIN_PB1]);
 	Pin::bind(cc1000.getPins()[CC1000_PIN_RSSI], mcu.getPins()[AVR_PIN_PF0]);
+	mcu.getPins()[AVR_PIN_PB0].clear();		// connected to the ground
 	cc1000.setMCU(&mcu);
 }
 
@@ -59,5 +61,11 @@ uint64_t
 Mica2::getCycles()
 {
 	return mcu.getCycles();
+}
+
+void
+Mica2::setNode(Node *node)
+{
+	this->node = node;
 }
 

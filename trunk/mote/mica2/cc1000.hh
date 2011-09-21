@@ -85,6 +85,9 @@
 #define		CC1000_CAL_COMPLETE	3
 #define		CC1000_CAL_ITERATE	0
 
+#define		CC1000_RX		0
+#define		CC1000_TX		1
+
 
 class CC1000: public Device{
 	// Inner classes
@@ -104,15 +107,22 @@ class CC1000: public Device{
 		void fired();
 		void setTime(double);
 	};
+	class DClkEvent: public Event{
+	private:
+		CC1000 *cc1000;
+	public:
+		DClkEvent();
+		void setDevice(void *);
+		void fired();
+	};
 public:
 	CC1000();
 	~CC1000();
 	void setMCU(Mcu *);
-	void tick();
 	Pin* getPins();
 private:
 	Mcu *mcu;
-	std::ofstream logf;	// <----- temp
+	std::ofstream logf, logf2;	// <----- temp
 	Pin pins[CC1000_NUM_PINS];
 	uint8_t registers[CC1000_NUM_REGS];
 	int address_nbits, w_nbits, data_nbits;
@@ -124,7 +134,8 @@ private:
 	bool pdata, pdata_prev;
 	bool dio, dio_prev;
 	bool dclk, dclk_prev;
-	bool rssi, rssi_prev;
+	bool rx_pd, tx_pd;
+	bool rxtx;		// Either Tx or Rx
 	uint32_t freqA, freqB;
 	uint16_t fsep;
 	std::queue<void (CC1000::*)()> callbacks;
@@ -136,7 +147,9 @@ private:
 	// Event Handlers
 	ClockEvent clk_event;
 	CallibrationEvent cal_event;
+	DClkEvent dclk_event;
 
+	void tick();
 	void readAddress();
 	void readW();
 	void readData();
@@ -145,11 +158,14 @@ private:
 	void print2();
 	void print3();
 	void dump(uint64_t);
+	void dump2(uint64_t, int);
+	void dump3(uint64_t, int);
 	void resetRegisters();
 	void configure(uint8_t);
 	void calibrate();
 	void calibrationCompleted();
 	void compare();
+	void DClkTick();
 };
 
 #endif

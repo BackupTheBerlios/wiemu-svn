@@ -1,5 +1,5 @@
 /**
-    pin.hh
+    node.hh
     Copyright (C) 2011  Mohamed Aslan <maslan@maslan.info>
 
     This program is free software: you can redistribute it and/or modify
@@ -16,36 +16,30 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
-#ifndef PIN_HH
-#define PIN_HH
+#ifndef NODE_HH
+#define NODE_HH
 
-#include <string>
-#include <stdint.h>
+class Mote;
 
-class Pin{
+class Node{
 private:
-	bool pin;		// The binary value
-	double val;		// The analog value
-	std::string name;
-	bool is_bind;
-	Pin *bpin;
+	int node_id;
+	int x, y, z;
+	std::string flash;
+	Mote *mote;
 public:
-	Pin();
-	Pin(std::string);
-	Pin(bool);
-	Pin(std::string, bool);
-	~Pin();
-	// Binary
-	void set();
-	void clear();
-	void toggle();
-	bool get();
-	// Analog
-	void setAnalogValue(double);
-	double getAnalogValue();
-	void setName(std::string);
-	std::string getName();
-	static void bind(Pin&, Pin&);
+	Node(std::string);
+	~Node();
+	void setID(int);
+	int getID();
+	void setLocation(int, int, int);
+	void setX(int);
+	void setY(int);
+	void setZ(int);
+	int getX();
+	int getY();
+	int getZ();
+	Mote *getMote();
 };
 
 #endif

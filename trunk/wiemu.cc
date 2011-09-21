@@ -17,10 +17,10 @@
 **/
 
 #include <iostream>
-#include <ctime>
 #include <cstdlib>
 #include <unistd.h>
-#include "mote/mica2/mica2.hh"
+#include "include/node.hh"
+#include "include/thread.hh"
 
 int
 main(int argc, char **argv)
@@ -50,22 +50,15 @@ main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 	std::string flash(argv[argc-1]);
-           
-	clock_t clk_start = clock();
-	Mica2 mica2;
-	mica2.load(flash);
-	if(steps != -1){
-		for(int i=1 ; i<=steps ; i++)
-			mica2.step();
-	}else{
-		mica2.run();
-	}
-	clock_t clk_end = clock();
-	
-	std::cout << std::endl;
-	std::cout << "Emulation Ended..." << std::endl;
-	std::cout << "\t* Total CPU cycles = " << mica2.getCycles() << " cycles" << std::endl;
-	std::cout << "\t* Total SIM time = " << (clk_end-clk_start)/(double)CLOCKS_PER_SEC << " sec" << std::endl;
+
+	Node *node = new Node(flash);
+	node->setID(1);
+	node->setLocation(10, 10, 0);
+	Thread *thr = new Thread(node);
+	steps > 0 ? thr->setSteps(steps) : thr->setSteps(NO_STEPS);
+	thr->start();
+	delete thr;
+	delete node;
 	
 	return EXIT_SUCCESS;
 }

@@ -1,10 +1,13 @@
 DATE = \"`date`\"
 CXX = g++
 CXXFLAGS = -DDISASM -Wall -O3 -DDATE="$(DATE)" -DCXX="\"$(CXX)\"" -DDEBUG
+LDFLAGS = -lpthread -g
 RM = rm -f
 STRIP = strip
 all:
 	$(CXX) $(CXXFLAGS) -c wiemu.cc -o build/wiemu.o -g
+	$(CXX) $(CXXFLAGS) -c thread.cc -o build/thread.o -g
+	$(CXX) $(CXXFLAGS) -c node.cc -o build/node.o -g
 	$(CXX) $(CXXFLAGS) -c firmware.cc -o build/firmware.o -g
 	$(CXX) $(CXXFLAGS) -c pin.cc -o build/pin.o -g
 	$(CXX) $(CXXFLAGS) -c clock.cc -o build/clock.o -g
@@ -17,10 +20,13 @@ all:
 	$(CXX) $(CXXFLAGS) -c arch/avr/pins.cc -o build/avr/pins.o -g
 	$(CXX) $(CXXFLAGS) -c arch/avr/timer.cc -o build/avr/timer.o -g
 	$(CXX) $(CXXFLAGS) -c arch/avr/spi.cc -o build/avr/spi.o -g
+	$(CXX) $(CXXFLAGS) -c arch/avr/adc.cc -o build/avr/adc.o -g
 	$(CXX) $(CXXFLAGS) -c mote/mica2/mica2.cc -o build/mote/mica2/mica2.o -g
 	$(CXX) $(CXXFLAGS) -c mote/mica2/leds.cc -o build/mote/mica2/leds.o -g
 	$(CXX) $(CXXFLAGS) -c mote/mica2/cc1000.cc -o build/mote/mica2/cc1000.o -g
 	$(CXX) build/wiemu.o \
+		build/thread.o \
+		build/node.o \
 		build/firmware.o \
 		build/pin.o \
 		build/clock.o \
@@ -30,10 +36,11 @@ all:
 		build/avr/pins.o \
 		build/avr/timer.o \
 		build/avr/spi.o \
+		build/avr/adc.o \
 		build/mote/mica2/mica2.o \
 		build/mote/mica2/leds.o \
 		build/mote/mica2/cc1000.o \
-		-o build/wiemu -g
+		-o build/wiemu $(LDFLAGS)
 	#$(STRIP) wiemu
 	@echo "WiEmu built Successfully ..."
 clean:

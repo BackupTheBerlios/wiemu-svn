@@ -38,6 +38,9 @@ Avr::Avr(){
 	spi = new Spi();
 	spi->setMCU(this);
 	addInternalDevice((InternalDevice*)spi);
+	adc = new Adc();
+	adc->setMCU(this);
+	addInternalDevice((InternalDevice*)adc);
 	nextInterrupt = 0;
 	clock.reset();
 	clock.setFreq(AVR_FREQ);
@@ -392,7 +395,7 @@ Avr::step(void){
 
 void
 Avr::run(){
-		//std::ofstream logf("wiemu.log");
+		std::ofstream logf("pc.log");
 		while(true){
 			if(this->stopped)
 				break;
@@ -403,10 +406,11 @@ Avr::run(){
 			//}
 			//uint16_t pc = regs->pc;
 			//logf << "PC = " << std::hex << regs->pc*2 << std::dec << std::endl;
+
 			step();
 		}
 		regs->dump();
-		//logf.close();
+		logf.close();
 }
 
 void
@@ -2120,7 +2124,7 @@ Avr::_sleep(){
 	this->sleeping = true;
 
 	std::cout << "sleep" << std::endl;
-	std::cerr << "sleeping ..... ZZZzzzz" << std::endl;
+	//std::cerr << "sleeping ..... ZZZzzzz" << std::endl;
 
 	regs->pc += 1;
 	clock += 1;
@@ -2277,7 +2281,7 @@ Avr::_lpm(){
 	// High or Low byte ?
 	if(regs->getZ() & 0x1)	// High
 		byte = word >> 8;
-	else				// Low
+	else			// Low
 		byte = word & 0xff;
 	if((this->opcode & MSK_LPM1) == OP_LPM1){
 		(*regs)[REG_R0] = byte;
@@ -2376,10 +2380,12 @@ Avr::awake()
 void
 Avr::fireInterrupt(uint8_t intr)
 {
-	std::cerr << "Interrupt TRY [" << (int)intr << "] @ " << clock.getCycles() << " PC=" << std::hex << regs->pc*2 << std::dec << std::endl;
+	//std::cerr << "Interrupt TRY [" << (int)intr << "] @ " << clock.getCycles() << " PC=" << std::hex << regs->pc*2 << std::dec << std::endl;
 	//interrupts.push(intr);
+	//if(intr == 17 && regs->isI())
+	//	std::cerr << "Interrupt [" << (int)intr << "] @ " << clock.getCycles() << " PC=" <<  std::hex << regs->pc*2 << std::dec << std::endl;
 	if(regs->isI()){
-		std::cerr << "Interrupt [" << (int)intr << "] @ " << clock.getCycles() << " PC=" <<  std::hex << regs->pc*2 << std::dec << std::endl;
+	//	std::cerr << "Interrupt [" << (int)intr << "] @ " << clock.getCycles() << " PC=" <<  std::hex << regs->pc*2 << std::dec << std::endl;
 		awake();
 		interrupts.push(intr);
 	}
@@ -2399,5 +2405,10 @@ Avr::interrupt(uint8_t intr)
 	regs->pc = intr * 2;
 	regs->oldpc = regs->pc;
 	clock += 3;		/* for compatibility with AVR Studio */
+}
+
+uint16_t
+Avr::getPC(){
+	return regs->pc;
 }
 
