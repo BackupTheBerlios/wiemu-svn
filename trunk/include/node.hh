@@ -20,6 +20,7 @@
 #define NODE_HH
 
 class Mote;
+class Debugger;
 
 class Node{
 private:
@@ -27,9 +28,11 @@ private:
 	int x, y, z;
 	std::string flash;
 	Mote *mote;
+	Debugger *debug;
 public:
-	Node(std::string);
+	Node();
 	~Node();
+	void setFlash(std::string);
 	void setID(int);
 	int getID();
 	void setLocation(int, int, int);
@@ -39,6 +42,7 @@ public:
 	int getX();
 	int getY();
 	int getZ();
+	void setDebugger(Debugger *);
 	Mote *getMote();
 };
 

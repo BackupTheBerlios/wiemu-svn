@@ -683,7 +683,7 @@ CC1000::DClkTick()
 	if(rxtx == CC1000_RX){
 		dio_prev = dio;
 		// TODO: receive from air
-		dio = LOW;
+		//dio = HIGH;
 		dio == HIGH ? pins[CC1000_PIN_DIO].set() : pins[CC1000_PIN_DIO].clear();
 		// RSSI
 		pins[CC1000_PIN_RSSI].setAnalogValue(1.2);

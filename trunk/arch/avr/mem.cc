@@ -59,6 +59,14 @@ Mem::read(const uint16_t idx){
 			it->second->probeIO(idx - AVR_IO_START, DEV_IO_READ);
 		}
 	}
+	if(idx == 0x023C){
+		std::cerr << "0x023C contains " << std::hex << (int)mem[idx] << std::dec << std::endl;
+		//mem[idx] = 0xff;
+	}
+	if(idx == 0x023D){
+		std::cerr << "0x023D contains " << std::hex << (int)mem[idx] << std::dec << std::endl;
+		//mem[idx] = 0x0;
+	}
 	return mem[idx];	// TODO: check for idx
 }
 
@@ -91,6 +99,11 @@ Mem::getBit(uint16_t addr, uint8_t bit){
 		return true;
 	else
 		return false;
+}
+
+int
+Mem::getSize(){
+	return memsize;
 }
 
 void

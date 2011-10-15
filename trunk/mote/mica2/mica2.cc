@@ -64,8 +64,8 @@ Mica2::getCycles()
 }
 
 void
-Mica2::setNode(Node *node)
+Mica2::setDebugger(Debugger *debug)
 {
-	this->node = node;
+	mcu.setDebugger(debug);
 }
 

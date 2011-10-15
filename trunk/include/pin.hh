@@ -19,6 +19,7 @@
 #ifndef PIN_HH
 #define PIN_HH
 
+#include <vector>
 #include <string>
 #include <stdint.h>
 
@@ -28,7 +29,7 @@ private:
 	double val;		// The analog value
 	std::string name;
 	bool is_bind;
-	Pin *bpin;
+	std::vector<Pin *>bpin;
 public:
 	Pin();
 	Pin(std::string);

@@ -24,6 +24,7 @@
 #include "../../include/firmware.hh"
 #include "../../include/device.hh"
 #include "../../include/internaldevice.hh"
+#include "../../include/debugger.hh"
 #include "mem.hh"
 #include "regs.hh"
 #include "pins.hh"
@@ -244,8 +245,8 @@ private:
 	uint16_t *flash;
 	uint8_t *eeprom;
 	Clock clock;					// System clock (cycles)
+	Debugger *debug;				// The Debugger
 	Pin pins[AVR_NUM_PINS];				// MCU Pins
-	int msize;					// Memory size
 	int fsize;					// Flash size
 	int esize;					// EEPROM size
 	uint16_t opcode;				// Current opcode
@@ -358,6 +359,7 @@ public:
 	void run(void);
 	uint64_t getCycles(void);
 	Clock getClock(void);
+	void setDebugger(Debugger *);
 	void dumpRegs(void);
 	void addIOListener(uint8_t, InternalDevice *);
 	void addClockEvent(Event *);

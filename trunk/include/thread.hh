@@ -21,6 +21,7 @@
 
 #define	NO_STEPS	0
 
+#include <vector>
 #include <pthread.h>
 #include "../mote/mica2/mica2.hh"
 
@@ -31,12 +32,14 @@ private:
 	Node *node;
 	int steps;
 	clock_t clk_start, clk_end;
+	static std::vector<Thread *> threads;
 public:
-	Thread(Node *);
+	Thread();
 	~Thread();
+	void setNode(Node *);
 	static void* entry(void *);
 	void setSteps(int);
-	void start();
+	static void start();
 	void run();
 };
 

@@ -132,7 +132,6 @@ Spi::slave(){
 	if((clk_state != cpha) || (sck != cpol))
 		return;
 	if(bits){
-		--bits;
 		if(spdr & MSB)				// write MISO to PB3 pin
 			avr->getPins()[AVR_PIN_PB3].set();
 		else
@@ -141,14 +140,17 @@ Spi::slave(){
 			spdr_buf |= 0x1;		// set the LSB
 		else
 			spdr_buf &= 0xfe;		// clear the LSB
-		spdr <<= 1;
-		spdr_buf <<= 1;
+		--bits;
 		if(!bits){
 			(*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE] |= (1 << AVR_SPSR_SPIF);
 			if(spcr & (1 << AVR_SPCR_SPIE)){		// Interrupts are enabled?
 				(*(avr->sram))[AVR_IOREG_SPSR + AVR_IO_BASE] &= ~(1 << AVR_SPSR_SPIF); //<---
 				avr->fireInterrupt(17);
 			}
+		}
+		else{
+			spdr <<= 1;
+			spdr_buf <<= 1;
 		}
 	}
 }

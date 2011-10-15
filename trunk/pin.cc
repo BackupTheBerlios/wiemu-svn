@@ -52,7 +52,8 @@ Pin::set()
 {
 	this->pin = true;
 	if(is_bind)
-		this->bpin->pin = this->pin;
+		for(unsigned int i=0 ; i<bpin.size() ; i++)
+			this->bpin[i]->pin = this->pin;
 }
 
 void
@@ -60,7 +61,8 @@ Pin::clear()
 {
 	this->pin = false;
 	if(is_bind)
-		this->bpin->pin = this->pin;
+		for(unsigned int i=0 ; i<bpin.size() ; i++)
+			this->bpin[i]->pin = this->pin;
 }
 
 void
@@ -70,8 +72,6 @@ Pin::toggle()
 		clear();
 	else
 		set();
-	if(is_bind)
-		this->bpin->pin = this->pin;
 }
 
 bool
@@ -97,8 +97,8 @@ Pin::bind(Pin &bp1, Pin &bp2)
 {
 	bp1.is_bind = true;
 	bp2.is_bind = true;
-	bp1.bpin = &bp2;
-	bp2.bpin = &bp1;
+	bp1.bpin.push_back(&bp2);
+	bp2.bpin.push_back(&bp1);
 	bp1.pin = bp2.pin;
 	bp1.val = bp2.val;
 }
@@ -108,7 +108,8 @@ Pin::setAnalogValue(double val)
 {
 	this->val = val;
 	if(is_bind)
-		this->bpin->val = this->val;
+		for(unsigned int i=0 ; i<bpin.size() ; i++)
+			this->bpin[i]->val = this->val;
 }
 
 double

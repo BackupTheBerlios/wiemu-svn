@@ -48,6 +48,7 @@ public:
 	void clearBit(uint16_t, uint8_t);
 	void setBit(uint16_t, uint8_t);
 	bool getBit(uint16_t, uint8_t);
+	int getSize();
 private:
 	uint8_t *mem;
 	uint8_t *oldmem;		// stores previous values of mem REGS + IO only

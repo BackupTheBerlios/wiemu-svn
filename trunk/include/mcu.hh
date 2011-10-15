@@ -22,6 +22,7 @@
 #include "internaldevice.hh"
 #include "device.hh"
 #include "clock.hh"
+#include "debugger.hh"
 
 class Mcu{
 private:
@@ -32,6 +33,7 @@ public:
 	virtual uint64_t getCycles(void) = 0;
 	virtual Clock getClock(void) = 0;
 	virtual void addClockEvent(Event *) = 0;
+	virtual void setDebugger(Debugger *) = 0;
 };
 
 #endif

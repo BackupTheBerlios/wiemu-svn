@@ -19,17 +19,17 @@
 #ifndef MOTE_HH
 #define MOTE_HH
 
-#include <unistd.h>
+#include <stdint.h>
 
 class Node;
 
 class Mote{
 public:
-	virtual void setNode(Node *) = 0;
 	virtual void load(std::string) = 0;
 	virtual void step(void) = 0;
 	virtual void run(void) = 0;
 	virtual uint64_t getCycles(void) = 0;
+	virtual void setDebugger(Debugger *) = 0;
 };
 
 #endif

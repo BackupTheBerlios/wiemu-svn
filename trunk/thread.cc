@@ -23,10 +23,12 @@
 
 #include <iostream>
 
-Thread::Thread(Node *node)
+std::vector<Thread *> Thread::threads;
+
+Thread::Thread()
 {
-	this->node = node;
 	steps = NO_STEPS;
+	threads.push_back(this);
 }
 
 Thread::~Thread()
@@ -35,6 +37,12 @@ Thread::~Thread()
 	std::cout << "Emulation Ended..." << std::endl;
 	std::cout << "\t* Total CPU cycles = " << node->getMote()->getCycles() << " cycles" << std::endl;
 	std::cout << "\t* Total SIM time = " << (clk_end-clk_start)/(double)CLOCKS_PER_SEC << " sec" << std::endl;
+}
+
+void
+Thread::setNode(Node *node)
+{
+	this->node = node;
 }
 
 void*
@@ -54,8 +62,12 @@ Thread::setSteps(int steps)
 void
 Thread::start()
 {
-	ret = pthread_create(&tid, NULL, entry, (void *)this);
-	pthread_join(tid, NULL);
+	for(unsigned int i=0 ; i<threads.size() ; i++){
+		threads[i]->ret = pthread_create(&(threads[i]->tid), NULL, entry, (void *)(threads[i]));
+	}
+	for(unsigned int i=0 ; i<threads.size() ; i++){
+		pthread_join(threads[i]->tid, NULL);
+	}
 }
 
 void
@@ -66,7 +78,7 @@ Thread::run()
 		node->getMote()->run();
 	}
 	else{
-		while(steps--)
+		for(int i=0 ; i<steps ; i++)
 			node->getMote()->step();
 	}
 	clk_end = clock();

@@ -21,8 +21,8 @@
 
 #include "../../arch/avr/avr.hh"
 #include "../../include/clock"
-#include "../../include/node"
 #include "../../include/mote"
+#include "../../include/debugger.hh"
 #include "leds.hh"
 #include "cc1000.hh"
 
@@ -34,8 +34,8 @@ public:
 	void run();
 	void step();
 	uint64_t getCycles();
-	void setNode(Node *);
 	void display();
+	void setDebugger(Debugger *);
 private:
 	Node *node;
 	Avr mcu;

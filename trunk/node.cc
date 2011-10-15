@@ -16,22 +16,28 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **/
 
+#include "include/debugger.hh"
 #include "mote/mica2/mica2.hh"
 #include "include/mote"
 #include "include/node"
 
 #include <iostream>
 
-Node::Node(std::string flash)
+Node::Node()
 {
-	this->flash = flash;
 	mote = new Mica2();
-	mote->load(flash);
 }
 
 Node::~Node()
 {
 	delete mote;
+}
+
+void
+Node::setFlash(std::string flash)
+{
+	this->flash = flash;
+	mote->load(flash);
 }
 
 void
@@ -70,6 +76,30 @@ void
 Node::setZ(int z)
 {
 	this->z = z;
+}
+
+int
+Node::getX()
+{
+	return x;
+}
+
+int
+Node::getY()
+{
+	return y;
+}
+
+int
+Node::getZ()
+{
+	return z;
+}
+
+void
+Node::setDebugger(Debugger *debug)
+{
+	mote->setDebugger(debug);
 }
 
 Mote*

@@ -48,13 +48,14 @@ Avr::Avr(){
 	watchdog_timer = 0;
 	stopped = false;
 	sleeping = false;
+	debug = new Debugger();
 	
 #ifdef DEBUG
 	regs->dump();
 #endif
-	std::cout << "SRAM Size = " << (this->msize/1024) << " KB" << std::endl;
-	std::cout << "FLASH Size = " << (this->fsize/1024) << " KB" << std::endl;
-	std::cout << "EEPROM Size = " << (this->esize/1024) << " KB" << std::endl;
+	std::cout << "SRAM Size = " << (sram->getSize()/1024) << " KB" << std::endl;
+	std::cout << "FLASH Size = " << (fsize/1024) << " KB" << std::endl;
+	std::cout << "EEPROM Size = " << (esize/1024) << " KB" << std::endl;
 }
 
 Avr::~Avr(){
@@ -169,15 +170,15 @@ Avr::step(void){
 
 	if(this->sleeping == false){
 		if(regs->pc*2 >= fw.getSize()){
-			std::cout << "FLASH: ILLEGAL ADDRESS: ";
-			std::cout << std::hex << regs->pc*2 << std::dec << std::endl;
+			debug->getFile() << "FLASH: ILLEGAL ADDRESS: ";
+			debug->getFile() << std::hex << regs->pc*2 << std::dec << std::endl;
 			this->stopped = true;
 			return;
 		}
 		opcode = this->flash[regs->pc];
 #ifdef DEBUG
-		std::cout << "PC=" << std::hex << std::setw(4) << regs->pc*2 /*<< ", opcode=" << std::setw(4) << (int)opcode << ", "*/;
-		std::cout << std::dec << "\t";
+		debug->getFile() << "PC=" << std::hex << std::setw(4) << regs->pc*2 /*<< ", opcode=" << std::setw(4) << (int)opcode << ", "*/;
+		debug->getFile() << std::dec << "\t";
 #endif
 		if((opcode & MSK_ADC) == OP_ADC)
 			_adc();
@@ -406,7 +407,14 @@ Avr::run(){
 			//}
 			//uint16_t pc = regs->pc;
 			//logf << "PC = " << std::hex << regs->pc*2 << std::dec << std::endl;
-
+			if(regs->pc*2 == 0x11dc)
+				std::cerr << getCycles() << " Inside if" << std::endl;
+			if(regs->pc*2 == 0x11fe)
+				std::cerr << getCycles() << " Inside if2" << std::endl;
+			if(regs->pc*2 == 0x1202)
+				std::cerr << getCycles() << " CALL 1" << std::endl;
+			if(regs->pc*2 == 0x120e)
+				std::cerr << getCycles() << " CALL 2" << std::endl;
 			step();
 		}
 		regs->dump();
@@ -415,7 +423,7 @@ Avr::run(){
 
 void
 Avr::illegal(){
-		std::cout << "ILLEGAL INSTRUCTION" << std::endl;
+		debug->getFile() << "ILLEGAL INSTRUCTION" << std::endl;
 		regs->dump();
 		this->stopped = true;
 }
@@ -454,7 +462,8 @@ Avr::_add(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "add " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "add " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -496,7 +505,8 @@ Avr::_adc(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "adc " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "adc " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -510,7 +520,8 @@ Avr::_ldi(){
 	(*regs)[Rd] = K;
 	
 	// disassemble
-	std::cout << "ldi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "ldi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 
 	regs->pc += 1;
 	clock += 1;
@@ -538,7 +549,8 @@ Avr::_and(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "and " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "and " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -566,7 +578,8 @@ Avr::_or(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "or " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "or " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -594,7 +607,8 @@ Avr::_eor(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "eor " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "eor " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 
 	regs->pc += 1;
 	clock += 1;
@@ -622,7 +636,8 @@ Avr::_andi(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "andi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "andi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 
 	regs->pc += 1;
 	clock += 1;
@@ -650,7 +665,8 @@ Avr::_ori(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "ori " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "ori " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 
 	regs->pc += 1;
 	clock += 1;
@@ -659,7 +675,8 @@ Avr::_ori(){
 void
 Avr::_nop(){
 	// disassemble
-	std::cout << "nop" << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "nop" << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -672,7 +689,8 @@ Avr::_mov(){
 	(*regs)[Rd] =(*regs)[Rr];
 	
 	// disassemble
-	std::cout << "mov " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "mov " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 
 	regs->pc += 1;
 	clock += 1;
@@ -715,7 +733,8 @@ Avr::_sub(){
 	clock += 1;
 		
 	// disassemble
-	std::cout << "sub " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sub " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 }
 
 void
@@ -752,7 +771,8 @@ Avr::_subi(){
 	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "subi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "subi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 		
 	regs->pc += 1;
 	clock += 1;
@@ -788,7 +808,8 @@ Avr::_adiw(){
 	(*regs)[Rdh] = (uint8_t)(R >> 8);
 
 	// disassemble
-	std::cout << "adiw " << regs->getName(Rdl) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "adiw " << regs->getName(Rdl) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 
 	regs->pc += 1;
 	clock += 2;
@@ -824,7 +845,8 @@ Avr::_sbiw(){
 	(*regs)[Rdh] = (uint8_t)(R >> 8);
 	
 	// disassemble
-	std::cout << "sbiw " << regs->getName(Rdl) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sbiw " << regs->getName(Rdl) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 
 	regs->pc += 1;
 	clock += 2;
@@ -839,7 +861,7 @@ Avr::_bclr(){
 				regs->clearC();
 				break;
 			case 1:
-				std::cout << "clz" << std::endl;
+				debug->getFile() << "clz" << std::endl;
 				regs->clearZ();
 				break;
 			case 2:
@@ -847,7 +869,7 @@ Avr::_bclr(){
 				regs->clearN();
 				break;
 			case 3:
-				std::cout << "clv" << std::endl;
+				debug->getFile() << "clv" << std::endl;
 				regs->clearV();
 				break;
 			case 4:
@@ -855,7 +877,7 @@ Avr::_bclr(){
 				regs->clearS();
 				break;
 			case 5:
-				std::cout << "clh" << std::endl;
+				debug->getFile() << "clh" << std::endl;
 				regs->clearH();
 				break;
 			case 6:
@@ -863,7 +885,7 @@ Avr::_bclr(){
 				regs->clearT();
 				break;
 			case 7:
-				std::cout << "cli" << std::endl;
+				debug->getFile() << "cli" << std::endl;
 				regs->clearI();
 				break;
 	}
@@ -877,35 +899,43 @@ Avr::_bset(){
 	uint8_t s = (opcode >> 4) & 0x7;
 	switch(s){
 			case 0:
-				std::cout << "sec" << std::endl;
+				if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+					debug->getFile() << "sec" << std::endl;
 				regs->setC();
 				break;
 			case 1:
-				std::cout << "sez" << std::endl;
+				if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+					debug->getFile() << "sez" << std::endl;
 				regs->setZ();
 				break;
 			case 2:
-				std::cout << "sen" << std::endl;
+				if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+					debug->getFile() << "sen" << std::endl;
 				regs->setN();
 				break;
 			case 3:
-				std::cout << "sev" << std::endl;
+				if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+					debug->getFile() << "sev" << std::endl;
 				regs->setV();
 				break;
 			case 4:
-				std::cout << "ses" << std::endl;
+				if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+					debug->getFile() << "ses" << std::endl;
 				regs->setS();
 				break;
 			case 5:
-				std::cout << "seh" << std::endl;
+				if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+					debug->getFile() << "seh" << std::endl;
 				regs->setH();
 				break;
 			case 6:
-				std::cout << "set" << std::endl;
+				if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+					debug->getFile() << "set" << std::endl;
 				regs->setT();
 				break;
 			case 7:
-				std::cout << "sei" << std::endl;
+				if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+					debug->getFile() << "sei" << std::endl;
 				regs->setI();
 				break;
 	}
@@ -921,11 +951,12 @@ Avr::_rjmp(){
 			K = -1 * (((~K) + 1) & 0xfff);		// 2th complement
 
 	// disassemble
-	if(K<0)
-		std::cout << "rjmp .-" << std::hex << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
-	else
-		std::cout << "rjmp .+" << std::hex << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
-
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled()){
+		if(K<0)
+			debug->getFile() << "rjmp .-" << std::hex << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
+		else
+			debug->getFile() << "rjmp .+" << std::hex << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
+	}
 	regs->pc += K + 1;
 	clock += 2;
 }
@@ -960,7 +991,8 @@ Avr::_neg(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "neg " << regs->getName(Rd) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "neg " << regs->getName(Rd) << std::endl;
 
 	regs->pc += 1;
 	clock += 1;
@@ -988,7 +1020,8 @@ Avr::_inc(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "inc " << regs->getName(Rd) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "inc " << regs->getName(Rd) << std::endl;
 
 	regs->pc += 1;
 	clock += 1;
@@ -1016,7 +1049,8 @@ Avr::_dec(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "dec " << regs->getName(Rd) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "dec " << regs->getName(Rd) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -1030,12 +1064,13 @@ Avr::_brbc(){
 			K = -1 * (((~K) + 1) & 0x7f);		// 2th complement
 
 	// disassemble
-	if(K<0)
-		std::cout << "brbc " << std::hex << (int)s << ", .-"  << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
-	else
-		std::cout << "brbc " << std::hex << (int)s << ", .+"  << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled()){
+		if(K<0)
+			debug->getFile() << "brbc " << std::hex << (int)s << ", .-"  << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
+		else
+			debug->getFile() << "brbc " << std::hex << (int)s << ", .+"  << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
 
-
+	}
 	if(!getBit((*regs)[REG_SREG], s)){
 		regs->pc = regs->pc + 1 + K;
 		clock += 2;
@@ -1054,11 +1089,12 @@ Avr::_brbs(){
 			K = -1 * (((~K) + 1) & 0x7f);		// 2th complement
 
 	// disassemble
-	if(K<0)
-		std::cout << "brbs " << std::hex << (int)s << ", .-"  << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
-	else
-		std::cout << "brbs " << std::hex << (int)s << ", .+"  << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
-
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled()){
+		if(K<0)
+			debug->getFile() << "brbs " << std::hex << (int)s << ", .-"  << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
+		else
+			debug->getFile() << "brbs " << std::hex << (int)s << ", .+"  << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
+	}
 	if(getBit((*regs)[REG_SREG], s)){
 		regs->pc = regs->pc + 1 + K;
 		clock += 2;
@@ -1093,7 +1129,8 @@ Avr::_com(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "com " << regs->getName(Rd) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "com " << regs->getName(Rd) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -1131,7 +1168,8 @@ Avr::_cp(){
 	else regs->clearC();
 	
 	// disassemble
-	std::cout << "cp " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "cp " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -1171,7 +1209,8 @@ Avr::_cpc(){
 	else regs->clearC();
 	
 	// disassemble
-	std::cout << "cpc " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "cpc " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 		
 	regs->pc += 1;
 	clock += 1;
@@ -1209,7 +1248,8 @@ Avr::_cpi(){
 	else regs->clearC();
 	
 	// disassemble
-	std::cout << "cpi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "cpi " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)K << std::dec << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -1239,7 +1279,8 @@ Avr::_lsr(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "lsr " << regs->getName(Rd) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "lsr " << regs->getName(Rd) << std::endl;
 		
 	regs->pc += 1;
 	clock += 1;
@@ -1253,7 +1294,8 @@ Avr::_swap(){
 	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "swap " << regs->getName(Rd) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "swap " << regs->getName(Rd) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -1272,7 +1314,8 @@ Avr::_push(){
 	(*regs)[REG_SPL] = (uint8_t)(SP);
 	
 	// disassemble
-	std::cout << "push " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "push " << regs->getName(Rr) << std::endl;
 		
 	regs->pc += 1;
 	clock += 2;
@@ -1291,7 +1334,8 @@ Avr::_pop(){
 	(*regs)[Rr] = sram->read(SP);
 	
 	// disassemble
-	std::cout << "pop " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "pop " << regs->getName(Rr) << std::endl;
 		
 	regs->pc += 1;
 	clock += 2;
@@ -1308,7 +1352,8 @@ Avr::_out(){
 	// timer->outp(A - 0x20);
 
 	// disassemble
-	std::cout << "out 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "out 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << ", " << regs->getName(Rr) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -1325,7 +1370,8 @@ Avr::_in(){
 	(*regs)[Rd] = sram->read(A);
 
 	// disassemble
-	std::cout << "in " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "in " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)(A-0x20) << std::dec << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -1345,11 +1391,12 @@ Avr::_rcall(){
 	regs->setSP(regs->getSP()-2);
 	
 	// disassemble
-	if(K<0)
-		std::cout << "rcall .-" << std::hex << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
-	else
-		std::cout << "rcall .+" << std::hex << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
-	
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled()){
+		if(K<0)
+			debug->getFile() << "rcall .-" << std::hex << (int)(K*-2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
+		else
+			debug->getFile() << "rcall .+" << std::hex << (int)(K*2) << "\t\t; 0x" << (int)((regs->pc + K + 1)*2) << std::dec << std::endl;
+	}
 	regs->pc += K + 1;
 	clock += 3;
 }
@@ -1359,8 +1406,9 @@ Avr::_ret(){
 	regs->setSP(regs->getSP()+2);
 
 	// disassemble
-	// std::cout << "ret\t\t" << "; 0x" << ((int)(((*sram)[regs->getSP()-1] << 8) | ((*sram)[regs->getSP()])*2)) << std::endl;
-	std::cout << "ret\t\t" << "; 0x" << std::hex << ((int)((sram->read(regs->getSP()-1) << 8) | (sram->read(regs->getSP()))*2)) << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		// debug->getFile() << "ret\t\t" << "; 0x" << ((int)(((*sram)[regs->getSP()-1] << 8) | ((*sram)[regs->getSP()])*2)) << std::endl;
+		debug->getFile() << "ret\t\t" << "; 0x" << std::hex << ((int)((sram->read(regs->getSP()-1) << 8) | (sram->read(regs->getSP()))*2)) << std::dec << std::endl;
 	
 	// regs->pc = ((*sram)[regs->getSP()-1] << 8) | ((*sram)[regs->getSP()]);
 	regs->pc = (sram->read(regs->getSP()-1) << 8) | (sram->read(regs->getSP()));
@@ -1395,7 +1443,8 @@ Avr::_ror(){
 	(*regs)[Rd] = R;
 	
 	// disassemble
-	std::cout << "ror " << regs->getName(Rd) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "ror " << regs->getName(Rd) << std::endl;
 		
 	regs->pc += 1;	
 	clock += 1;
@@ -1409,7 +1458,8 @@ Avr::_sts(){
 	sram->write(K, (*regs)[Rr]);
 		
 	// disassemble
-	std::cout << "sts 0x" << std::hex << (unsigned int)(K) << std::dec << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sts 0x" << std::hex << (unsigned int)(K) << std::dec << ", " << regs->getName(Rr) << std::endl;
 
 	regs->pc += 1;	
 	clock += 1;
@@ -1419,13 +1469,14 @@ void
 Avr::_sts32(){
 	uint8_t Rr = ((opcode >> 4) & 0x1f);
 	uint16_t K = this->flash[regs->pc+1];
-	if(K >= this->msize)
-		std::cout << "SRAM: ILLEGAL ADDRESS" << std::endl;
+	if(K >= sram->getSize())
+		debug->getFile() << "SRAM: ILLEGAL ADDRESS" << std::endl;
 	// (*sram)[K] =(*regs)[Rr];
 	sram->write(K, (*regs)[Rr]);
 
 	// disassemble
-	std::cout << "sts 0x" << std::hex << (unsigned int)(K) << std::dec << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sts 0x" << std::hex << (unsigned int)(K) << std::dec << ", " << regs->getName(Rr) << std::endl;
 	
 	regs->pc += 2;	
 	clock += 2;
@@ -1439,7 +1490,8 @@ Avr::_lds(){
 	(*regs)[Rd] = sram->read(K);
 
 	// disassemble
-	std::cout << "lds " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)(K) << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "lds " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)(K) << std::dec << std::endl;
 
 		
 	regs->pc += 1;	
@@ -1450,13 +1502,14 @@ void
 Avr::_lds32(){
 	uint8_t Rd = ((opcode >> 4) & 0x1f);
 	uint16_t K = this->flash[regs->pc+1];
-	if(K >= this->msize)
-		std::cout << "SRAM: ILLEGAL ADDRESS" << std::endl;
+	if(K >= sram->getSize())
+		debug->getFile() << "SRAM: ILLEGAL ADDRESS" << std::endl;
 	// (*regs)[Rd] = (*sram)[K];
 	(*regs)[Rd] = sram->read(K);
 
 	// disassemble
-	std::cout << "lds " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)(K) << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "lds " << regs->getName(Rd) << ", 0x" << std::hex << (unsigned int)(K) << std::dec << std::endl;
 
 	regs->pc += 2;	
 	clock += 2;
@@ -1486,13 +1539,14 @@ Avr::_stx(){
 	regs->setX(X);
 	
 	// disassemble
-	if(sign == '+')
-		std::cout << "st x+, " << regs->getName(Rr) << std::endl;
-	else if(sign == '-')
-		std::cout << "st -x, " << regs->getName(Rr) << std::endl;
-	else
-		std::cout << "st x, " << regs->getName(Rr) << std::endl;
-
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled()){
+		if(sign == '+')
+			debug->getFile() << "st x+, " << regs->getName(Rr) << std::endl;
+		else if(sign == '-')
+			debug->getFile() << "st -x, " << regs->getName(Rr) << std::endl;
+		else
+			debug->getFile() << "st x, " << regs->getName(Rr) << std::endl;
+	}
 	regs->pc += 1;	
 	clock += 2;
 }
@@ -1523,16 +1577,17 @@ Avr::_sty(){
 	regs->setY(Y);
 	
 	// disassemble
-	if(sign == '+')
-		std::cout << "st y+, " << regs->getName(Rr) << std::endl;
-	else if(sign == '-')
-		std::cout << "st -y, " << regs->getName(Rr) << std::endl;
-	else
-		if(q)
-			std::cout << "std y+" << (int)(q) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled()){
+		if(sign == '+')
+			debug->getFile() << "st y+, " << regs->getName(Rr) << std::endl;
+		else if(sign == '-')
+			debug->getFile() << "st -y, " << regs->getName(Rr) << std::endl;
 		else
-			std::cout << "st y, " << regs->getName(Rr) << std::endl;
-
+			if(q)
+				debug->getFile() << "std y+" << (int)(q) << ", " << regs->getName(Rr) << std::endl;
+			else
+				debug->getFile() << "st y, " << regs->getName(Rr) << std::endl;
+	}
 	regs->pc += 1;	
 	clock += 2;
 }
@@ -1563,16 +1618,17 @@ Avr::_stz(){
 	regs->setZ(Z);
 
 	// disassemble
-	if(sign == '+')
-		std::cout << "st z+, " << regs->getName(Rr) << std::endl;
-	else if(sign == '-')
-		std::cout << "st -z, " << regs->getName(Rr) << std::endl;
-	else
-		if(q)
-			std::cout << "std z+" << (int)(q) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled()){
+		if(sign == '+')
+			debug->getFile() << "st z+, " << regs->getName(Rr) << std::endl;
+		else if(sign == '-')
+			debug->getFile() << "st -z, " << regs->getName(Rr) << std::endl;
 		else
-			std::cout << "st z, " << regs->getName(Rr) << std::endl;
-	
+			if(q)
+				debug->getFile() << "std z+" << (int)(q) << ", " << regs->getName(Rr) << std::endl;
+			else
+				debug->getFile() << "st z, " << regs->getName(Rr) << std::endl;
+	}
 	regs->pc += 1;	
 	clock += 2;
 }
@@ -1601,13 +1657,14 @@ Avr::_ldx(){
 	regs->setX(X);
 	
 	// disassemble
-	if(sign == '+')
-		std::cout << "ld " << regs->getName(Rd) << ", x+" << std::endl;
-	else if(sign == '-')
-		std::cout << "ld " << regs->getName(Rd) << ", -x" << std::endl;
-	else
-		std::cout << "ld " << regs->getName(Rd) << ", x" << std::endl;
-
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled()){
+		if(sign == '+')
+			debug->getFile() << "ld " << regs->getName(Rd) << ", x+" << std::endl;
+		else if(sign == '-')
+			debug->getFile() << "ld " << regs->getName(Rd) << ", -x" << std::endl;
+		else
+			debug->getFile() << "ld " << regs->getName(Rd) << ", x" << std::endl;
+	}
 	regs->pc += 1;	
 	clock += 2;
 }
@@ -1638,16 +1695,17 @@ Avr::_ldy(){
 	regs->setY(Y);
 	
 	// disassemble
-	if(sign == '+')
-		std::cout << "ld " << regs->getName(Rd) << ", y+" << std::endl;
-	else if(sign == '-')
-		std::cout << "ld " << regs->getName(Rd) << ", -y" << std::endl;
-	else
-		if(q)
-			std::cout << "ldd " << regs->getName(Rd) << ", y+" << (int)(q) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled()){
+		if(sign == '+')
+			debug->getFile() << "ld " << regs->getName(Rd) << ", y+" << std::endl;
+		else if(sign == '-')
+			debug->getFile() << "ld " << regs->getName(Rd) << ", -y" << std::endl;
 		else
-			std::cout << "ld " << regs->getName(Rd) << ", y" << std::endl;
-	
+			if(q)
+				debug->getFile() << "ldd " << regs->getName(Rd) << ", y+" << (int)(q) << std::endl;
+			else
+				debug->getFile() << "ld " << regs->getName(Rd) << ", y" << std::endl;
+	}
 	regs->pc += 1;	
 	clock += 2;
 }
@@ -1678,16 +1736,17 @@ Avr::_ldz(){
 	regs->setZ(Z);
 
 	// disassemble
-	if(sign == '+')
-		std::cout << "ld " << regs->getName(Rd) << ", z+" << std::endl;
-	else if(sign == '-')
-		std::cout << "ld " << regs->getName(Rd) << ", -z" << std::endl;
-	else
-		if(q)
-			std::cout << "ldd " << regs->getName(Rd) << ", z+" << (int)(q) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled()){
+		if(sign == '+')
+			debug->getFile() << "ld " << regs->getName(Rd) << ", z+" << std::endl;
+		else if(sign == '-')
+			debug->getFile() << "ld " << regs->getName(Rd) << ", -z" << std::endl;
 		else
-			std::cout << "ld " << regs->getName(Rd) << ", z" << std::endl;
-	
+			if(q)
+				debug->getFile() << "ldd " << regs->getName(Rd) << ", z+" << (int)(q) << std::endl;
+			else
+				debug->getFile() << "ld " << regs->getName(Rd) << ", z" << std::endl;
+	}
 	regs->pc += 1;	
 	clock += 2;
 }
@@ -1695,8 +1754,9 @@ Avr::_ldz(){
 void
 Avr::_break(){
 	stopped = true;
-	
-	std::cout << "break" << std::endl;
+	// disassemble
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "break" << std::endl;
 
 	regs->pc += 1;	
 	clock += 1;
@@ -1730,7 +1790,8 @@ Avr::_asr(){
 	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "asr " << regs->getName(Rd) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "asr " << regs->getName(Rd) << std::endl;
 
 	regs->pc += 1;	
 	clock += 1;
@@ -1749,7 +1810,8 @@ Avr::_bld(){
 	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "bld " << regs->getName(Rd) << ", " << (int)(b) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "bld " << regs->getName(Rd) << ", " << (int)(b) << std::endl;
 
 	regs->pc += 1;
 	clock += 1;
@@ -1765,7 +1827,8 @@ Avr::_bst(){
 		regs->clearT();
 
 	// disassemble
-	std::cout << "bst " << regs->getName(Rd) << ", " << (int)(b) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "bst " << regs->getName(Rd) << ", " << (int)(b) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -1779,7 +1842,8 @@ Avr::_cbi(){
 	sram->clearBit(A, b);
 
 	// disassemble
-	std::cout << "cbi 0x" << std::hex << (int)(A-0x20) << std::dec << ", " << (int)(b) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "cbi 0x" << std::hex << (int)(A-0x20) << std::dec << ", " << (int)(b) << std::endl;
 
 	regs->pc += 1;
 	clock += 2;
@@ -1793,7 +1857,8 @@ Avr::_sbi(){
 	sram->setBit(A, b);
 
 	// disassemble
-	std::cout << "sbi 0x" << std::hex << (int)(A-0x20) << std::dec << ", " << (int)(b) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sbi 0x" << std::hex << (int)(A-0x20) << std::dec << ", " << (int)(b) << std::endl;
 
 	regs->pc += 1;
 	clock += 2;
@@ -1805,7 +1870,8 @@ Avr::_cpse(){
 	uint8_t Rr = ((opcode >> 5) & 0x10) | (opcode & 0xf);
 	
 	// disassemble
-	std::cout << "cpse " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "cpse " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 
 	if((*regs)[Rd] ==(*regs)[Rr]){
 		uint16_t op2 = this->flash[regs->pc+1];
@@ -1825,7 +1891,8 @@ Avr::_cpse(){
 void
 Avr::_ijmp(){
 	// disassemble
-	std::cout << "ijmp" << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "ijmp" << std::endl;
 
 	regs->pc = regs->getZ();
 	clock += 2;
@@ -1841,7 +1908,8 @@ Avr::_icall(){
 	regs->setSP(regs->getSP()-2);
 
 	// disassemble
-	std::cout << "icall" << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "icall" << std::endl;
 	
 	regs->pc = regs->getZ();
 	clock += 3;
@@ -1856,7 +1924,8 @@ Avr::_jmp(){
 	uint16_t K = this->flash[regs->pc+1];
 
 	// disassemble
-	std::cout << "jmp 0x" << std::hex << (unsigned int)(K*2) << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "jmp 0x" << std::hex << (unsigned int)(K*2) << std::dec << std::endl;
 
 	regs->pc = K;
 	clock += 3;
@@ -1878,7 +1947,8 @@ Avr::_call(){
 	regs->setSP(regs->getSP()-2);
 
 	// disassemble
-	std::cout << "call 0x" << std::hex << (unsigned int)(K*2) << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "call 0x" << std::hex << (unsigned int)(K*2) << std::dec << std::endl;
 	
 	regs->pc = K;
 	clock += 4;
@@ -1890,8 +1960,9 @@ Avr::_reti(){
 	regs->setI();
 
 	// disassemble
-	// std::cout << "reti\t\t" << "; 0x" << ((unsigned int)(((*sram)[regs->getSP()-1] << 8) | ((*sram)[regs->getSP()])*2)) << std::endl;
-	std::cout << "reti\t\t" << "; 0x" << ((unsigned int)((sram->read(regs->getSP()-1) << 8) | (sram->read(regs->getSP()))*2)) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		// debug->getFile() << "reti\t\t" << "; 0x" << ((unsigned int)(((*sram)[regs->getSP()-1] << 8) | ((*sram)[regs->getSP()])*2)) << std::endl;
+		debug->getFile() << "reti\t\t" << "; 0x" << ((unsigned int)((sram->read(regs->getSP()-1) << 8) | (sram->read(regs->getSP()))*2)) << std::endl;
 
 	// regs->pc = ((*sram)[regs->getSP()-1] << 8) | ((*sram)[regs->getSP()]);
 	regs->pc = (sram->read(regs->getSP()-1) << 8) | (sram->read(regs->getSP()));		
@@ -1915,7 +1986,8 @@ Avr::_mul(){
 	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 	
 	// disassemble
-	std::cout << "mul " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "mul " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 
 	regs->pc += 1;
 	clock += 2;
@@ -1941,7 +2013,8 @@ Avr::_muls(){
 	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 
 	// disassemble
-	std::cout << "muls " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "muls " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
 
 	regs->pc += 1;
 	clock += 2;
@@ -1969,7 +2042,8 @@ Avr::_mulsu(){
 	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 
 	// disassemble
-	std::cout << "mulsu " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "mulsu " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
 
 	regs->pc += 1;
 	clock += 2;
@@ -1995,7 +2069,8 @@ Avr::_fmul(){
 	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 	
 	// disassemble
-	std::cout << "fmul " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "fmul " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
 
 	regs->pc += 1;
 	clock += 2;
@@ -2022,7 +2097,8 @@ Avr::_fmuls(){
 	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 
 	// disassemble
-	std::cout << "fmuls " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "fmuls " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
 
 	regs->pc += 1;
 	clock += 2;
@@ -2051,7 +2127,8 @@ Avr::_fmulsu(){
 	(*regs)[REG_R1] = (uint8_t)(R >> 8);
 
 	// disassemble
-	std::cout << "fmulsu " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "fmulsu " << regs->getName(d) << ", " << regs->getName(r) << std::endl;
 
 	regs->pc += 1;
 	clock += 2;
@@ -2065,7 +2142,8 @@ Avr::_movw(){
 	(*regs)[Rd+1] =(*regs)[Rr+1];
 
 	// disassemble
-	std::cout << "movw " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "movw " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;	
@@ -2077,7 +2155,8 @@ Avr::_sbrc(){
 	uint8_t b = opcode & 0x7;
 
 	// disassemble
-	std::cout << "sbrc " << regs->getName(Rr) << ", " << (int)(b) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sbrc " << regs->getName(Rr) << ", " << (int)(b) << std::endl;
 
 	if(!getBit((*regs)[Rr], b)){
 		uint16_t op2 = this->flash[regs->pc+1];
@@ -2101,7 +2180,8 @@ Avr::_sbrs(){
 	uint8_t b = opcode & 0x7;
 
 	// disassemble
-	std::cout << "sbrs " << regs->getName(Rr) << ", " << (int)(b) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sbrs " << regs->getName(Rr) << ", " << (int)(b) << std::endl;
 
 	if(getBit((*regs)[Rr], b)){
 		uint16_t op2 = this->flash[regs->pc+1];
@@ -2123,7 +2203,8 @@ void
 Avr::_sleep(){
 	this->sleeping = true;
 
-	std::cout << "sleep" << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sleep" << std::endl;
 	//std::cerr << "sleeping ..... ZZZzzzz" << std::endl;
 
 	regs->pc += 1;
@@ -2134,7 +2215,8 @@ void
 Avr::_wdr(){
 	this->watchdog_timer = 0;
 
-	std::cout << "wdr" << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "wdr" << std::endl;
 
 	regs->pc += 1;
 	clock += 1;
@@ -2175,7 +2257,8 @@ Avr::_sbci(){
 	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "sbci " << regs->getName(Rd) << ", 0x" << std::hex << (int)(K) << std::dec << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sbci " << regs->getName(Rd) << ", 0x" << std::hex << (int)(K) << std::dec << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -2216,7 +2299,8 @@ Avr::_sbc(){
 	(*regs)[Rd] = R;
 
 	// disassemble
-	std::cout << "sbc " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sbc " << regs->getName(Rd) << ", " << regs->getName(Rr) << std::endl;
 	
 	regs->pc += 1;
 	clock += 1;
@@ -2228,7 +2312,8 @@ Avr::_sbic(){
 	uint8_t b = opcode & 0x7;
 
 	// disassemble
-	std::cout << "sbic 0x" << (int)(A-0x20) << ", " << (int)(b) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sbic 0x" << (int)(A-0x20) << ", " << (int)(b) << std::endl;
 
 	// if(!getBit((*sram)[A], b)){
 	if(!sram->getBit(A, b)){
@@ -2253,7 +2338,8 @@ Avr::_sbis(){
 	uint8_t b = opcode & 0x7;
 
 	// disassemble
-	std::cout << "sbis 0x" << (int)(A-0x20) << ", " << (int)(b) << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "sbis 0x" << (int)(A-0x20) << ", " << (int)(b) << std::endl;
 
 	// if(getBit((*sram)[A], b)){
 	if(sram->getBit(A, b)){
@@ -2300,7 +2386,8 @@ Avr::_lpm(){
 	}
 
 	// disassemble
-	std::cout << "lpm" + param << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "lpm" + param << std::endl;
 
 	regs->pc += 1;
 	clock += 3;
@@ -2337,7 +2424,8 @@ Avr::_elpm(){
 	}
 
 	// disassemble
-	std::cout << "elpm" + param << std::endl;
+	if(debug->isFileOpened() && debug->isDisassemblyEnabled())
+		debug->getFile() << "elpm" + param << std::endl;
 
 	regs->pc += 1;
 	clock += 3;
@@ -2405,6 +2493,12 @@ Avr::interrupt(uint8_t intr)
 	regs->pc = intr * 2;
 	regs->oldpc = regs->pc;
 	clock += 3;		/* for compatibility with AVR Studio */
+}
+
+void
+Avr::setDebugger(Debugger *debug)
+{
+	this->debug = debug;
 }
 
 uint16_t
